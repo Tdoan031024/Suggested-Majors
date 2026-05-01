@@ -23,7 +23,7 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def _load_all_sheets(xlsx_path: str) -> pd.DataFrame:
     xl = pd.ExcelFile(xlsx_path)
     rows = []
-    for name in ['All-2023','All-2022']:
+    for name in ['All-2023','All-2022','DT-2021']:
         if name not in xl.sheet_names:
             continue
         df = xl.parse(name)
@@ -93,9 +93,9 @@ def _load_all_sheets(xlsx_path: str) -> pd.DataFrame:
 
 def train_and_save(xlsx_path: str = None, out_path: str = None):
     if xlsx_path is None:
-        xlsx_path = os.path.join(os.path.dirname(__file__), 'DXDuong.xlsx')
+        xlsx_path = os.path.join(os.path.dirname(__file__), '..', 'DXDuong.xlsx')
     if out_path is None:
-        out_dir = os.path.join(os.path.dirname(__file__), 'models')
+        out_dir = os.path.join(os.path.dirname(__file__), '..', 'models')
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, 'pt1_models.pkl')
 

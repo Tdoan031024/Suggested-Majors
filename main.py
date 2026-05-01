@@ -58,7 +58,7 @@ def load_dgnl_system():
     if 'dgnl' not in _cached_systems:
         print("Đang khởi tạo hệ thống DGNL với models đã train sẵn...")
         try:
-            from Goi_y_nganh_nghe import goi_y_nganh_simple
+            from scripts.Goi_y_nganh_nghe import goi_y_nganh_simple
             _cached_systems['dgnl'] = goi_y_nganh_simple
             print("Hệ thống DGNL đã sẵn sàng với models đã train!")
         except Exception as e:
@@ -74,7 +74,7 @@ def load_hocba_system():
     if 'hocba' not in _cached_systems:
         print("Đang khởi tạo hệ thống học bạ lần đầu...")
         try:
-            from Goi_y_nganh_hoc_ba import goi_y_nganh_hoc_ba
+            from scripts.Goi_y_nganh_hoc_ba import goi_y_nganh_hoc_ba
             _cached_systems['hocba'] = goi_y_nganh_hoc_ba
             print("Hệ thống học bạ đã sẵn sàng!")
         except Exception as e:
@@ -90,7 +90,7 @@ def load_tuyenthang_system():
     if 'tuyenthang' not in _cached_systems:
         print("Đang khởi tạo hệ thống tuyển thẳng lần đầu...")
         try:
-            from Goi_y_nganh_tuyen_thang import goi_y_nganh_tuyen_thang_simple
+            from scripts.Goi_y_nganh_tuyen_thang import goi_y_nganh_tuyen_thang_simple
             _cached_systems['tuyenthang'] = goi_y_nganh_tuyen_thang_simple
             print("Hệ thống tuyển thẳng đã sẵn sàng!")
         except Exception as e:
@@ -106,7 +106,7 @@ def load_pt1_system():
     if 'pt1' not in _cached_systems:
         print("Đang khởi tạo hệ thống PT1 (THPT 2025) lần đầu...")
         try:
-            from Goi_y_nganh_thpt import goi_y_nganh_thpt
+            from scripts.Goi_y_nganh_thpt import goi_y_nganh_thpt
             _cached_systems['pt1'] = goi_y_nganh_thpt
             print("Hệ thống PT1 đã sẵn sàng!")
         except Exception as e:
@@ -769,8 +769,8 @@ def phuong_thuc_4_thpt():
 
     # Import tiện ích nhóm/tổ hợp từ PT1 và mapping môn từ HB
     try:
-        from Goi_y_nganh_thpt import allowed_tohops_for_group
-        from hoc_ba_analyzer import TO_HOP_MON
+        from scripts.Goi_y_nganh_thpt import allowed_tohops_for_group
+        from scripts.hoc_ba_analyzer import TO_HOP_MON
     except Exception:
         TO_HOP_MON = {}
         def allowed_tohops_for_group(_):

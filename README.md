@@ -130,5 +130,4 @@ Sau khi có các file .pkl trong thư mục `models/`, ứng dụng chạy khôn
 
 ---
 
-🎉 Hệ thống đã sẵn sàng cho sinh viên HUIT trải nghiệm gợi ý ngành theo 4 phương thức!#   s u g g e s t e d - m a j o r s  
- 
+🎉 Hệ thống đã sẵn sàng cho sinh viên HUIT trải nghiệm gợi ý ngành theo 4 phương thức!
