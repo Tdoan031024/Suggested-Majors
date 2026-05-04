@@ -113,6 +113,27 @@ class HocBaAnalyzer:
             print(f"❌ Lỗi load models HB: {e}")
             return False
     
+    def get_priority_points(self, khu_vuc, doi_tuong, diem_khuyen_khich=0):
+        """
+        Tính điểm ưu tiên theo quy chế HUIT 2026
+        KV1: 0.75, KV2-NT: 0.5, KV2: 0.25, KV3: 0
+        Nhóm 1 (01-04): 2.0, Nhóm 2 (05-07): 1.0
+        Khuyến khích (IELTS/Năng khiếu): tối đa 1.5
+        Tổng ưu tiên tối đa: 3.0
+        """
+        map_kv = {'KV1': 0.75, 'KV2-NT': 0.5, 'KV2': 0.25, 'KV3': 0}
+        map_dt = {
+            'Nhóm 1 (01-04)': 2.0, 
+            'Nhóm 2 (05-07)': 1.0,
+            'Không thuộc diện ưu tiên': 0
+        }
+        
+        p_kv = map_kv.get(khu_vuc, 0)
+        p_dt = map_dt.get(doi_tuong, 0)
+            
+        total = p_kv + p_dt
+        return min(3.0, total)
+    
     def tinh_diem_hoc_ba(self, to_hop, diem_5_hk):
         """
         Tính điểm học bạ theo công thức HUIT

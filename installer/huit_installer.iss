@@ -28,7 +28,7 @@ DefaultDirName={autopf}\HUIT_GoiYNganh
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 ; Icon ứng dụng (bỏ comment nếu có file .ico)
-; SetupIconFile=assets\icon.ico
+SetupIconFile=..\app_icon.ico
 OutputBaseFilename=HUIT_GoiYNganh_Setup_v{#AppVersion}
 OutputDir=installer_output
 Compression=lzma2/ultra64
@@ -39,7 +39,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
 [Languages]
-Name: "vietnamese"; MessagesFile: "compiler:Languages\Default.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Tạo biểu tượng trên Desktop"; \

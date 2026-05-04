@@ -4,12 +4,15 @@ GIAO DIỆN NHẬP ĐIỂM HỌC BẠ THPT
 Cho phép người dùng chọn tổ hợp và nhập điểm 5 học kỳ
 """
 
-from hoc_ba_analyzer import HocBaAnalyzer, TO_HOP_MON, NGANH_TO_HOP
+try:
+    from scripts.hoc_ba_analyzer import HocBaAnalyzer, TO_HOP_MON, NGANH_TO_HOP
+except ImportError:
+    from hoc_ba_analyzer import HocBaAnalyzer, TO_HOP_MON, NGANH_TO_HOP
 
 # Mapping nhóm ngành 9 nhóm (đồng nhất với DGNL)
 NGUYEN_VONG_MAP = {
     # Alias ngắn
-    'CNTT': ['7480201', '7480202', '7460108', '7340205'],
+    'CNTT': ['7480201', '7480202', '7460108'],
     'Kinh doanh': ['7340101', '7340115', '7340120', '7340122', '7340129'],
     'Kỹ thuật': ['7510202', '7510203', '7520115', '7510301', '7510303'],
     'Thực phẩm - Môi trường': ['7540101', '7540106', '7540105', '7819009', '7819010', '7340129'],
@@ -23,7 +26,7 @@ NGUYEN_VONG_MAP = {
     'Công nghệ – Chế biến – Thực phẩm': ['7540101', '7540106', '7540105', '7819009', '7819010', '7340129'],
     'Kỹ thuật – Cơ khí – Tự động hóa': ['7510202', '7510203', '7520115', '7510301', '7510303'],
     'Hóa học – Sinh học – Môi trường – Vật liệu': ['7510401', '7510406', '7850101', '7420201', '7510402'],
-    'Công nghệ thông tin – Trí tuệ nhân tạo – Dữ liệu': ['7480201', '7480202', '7460108', '7340205'],
+    'Công nghệ thông tin – Trí tuệ nhân tạo – Dữ liệu': ['7480201', '7480202', '7460108'],
     'Kinh doanh – Quản trị – Marketing': ['7340101', '7340115', '7340120', '7340122', '7340129'],
     'Kế toán – Tài chính – Ngân hàng': ['7340301', '7340201', '7340205'],
     'Logistics – Quản lý chuỗi cung ứng – Kinh doanh chuyên biệt': ['7510605', '7340123', '7540204'],

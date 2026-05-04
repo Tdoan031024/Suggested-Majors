@@ -13,7 +13,10 @@ import joblib
 import numpy as np
 import pandas as pd
 from typing import Optional, List, Dict
-from hoc_ba_analyzer import NGANH_TO_HOP  # dùng mapping tổ hợp 2025
+try:
+    from scripts.hoc_ba_analyzer import NGANH_TO_HOP
+except ImportError:
+    from hoc_ba_analyzer import NGANH_TO_HOP
 
 def _base_dir():
     """Trả về thư mục gốc đúng dù chạy bình thường hay dưới dạng .exe (PyInstaller)."""
@@ -31,7 +34,7 @@ def _group_mapping_codes() -> Dict[str, List[str]]:
     """Mapping 9 nhóm ngành (đồng nhất với DGNL/Học bạ). Bao gồm alias ngắn và tên đầy đủ."""
     return {
         # Alias ngắn
-        'CNTT': ['7480201', '7480202', '7460108', '7340205'],
+        'CNTT': ['7480201', '7480202', '7460108'],
         'Kinh doanh': ['7340101', '7340115', '7340120', '7340122', '7340129'],
         'Kỹ thuật': ['7510202', '7510203', '7520115', '7510301', '7510303'],
         'Thực phẩm - Môi trường': ['7540101', '7540106', '7540105', '7819009', '7819010', '7340129'],
@@ -45,7 +48,7 @@ def _group_mapping_codes() -> Dict[str, List[str]]:
         'Công nghệ – Chế biến – Thực phẩm': ['7540101', '7540106', '7540105', '7819009', '7819010', '7340129'],
         'Kỹ thuật – Cơ khí – Tự động hóa': ['7510202', '7510203', '7520115', '7510301', '7510303'],
         'Hóa học – Sinh học – Môi trường – Vật liệu': ['7510401', '7510406', '7850101', '7420201', '7510402'],
-        'Công nghệ thông tin – Trí tuệ nhân tạo – Dữ liệu': ['7480201', '7480202', '7460108', '7340205'],
+        'Công nghệ thông tin – Trí tuệ nhân tạo – Dữ liệu': ['7480201', '7480202', '7460108'],
         'Kinh doanh – Quản trị – Marketing': ['7340101', '7340115', '7340120', '7340122', '7340129'],
         'Kế toán – Tài chính – Ngân hàng': ['7340301', '7340201', '7340205'],
         'Logistics – Quản lý chuỗi cung ứng – Kinh doanh chuyên biệt': ['7510605', '7340123', '7540204'],
@@ -108,6 +111,23 @@ def _detect_tohop_from_subjects(mon1_name: str, mon2_name: str, mon3_name: str) 
         return 'C00'
     return 'KHAC'
 
+def calculate_priority_pt1(tong_diem_3_mon: float, khu_vuc: str, doi_tuong: str) -> float:
+    """
+    Tính điểm ưu tiên theo quy chế mới (áp dụng từ 2023):
+    Nếu tổng điểm >= 22.5, điểm ưu tiên giảm dần theo công thức:
+    Priority = [(30 - Tổng điểm) / 7.5] * Mức điểm ưu tiên thông thường
+    """
+    map_kv = {'KV1': 0.75, 'KV2-NT': 0.5, 'KV2': 0.25, 'KV3': 0.0}
+    map_dt = {'Nhóm 1 (01-04)': 2.0, 'Nhóm 2 (05-07)': 1.0, 'Không ưu tiên': 0.0}
+    
+    base_ut = map_kv.get(khu_vuc, 0.0) + map_dt.get(doi_tuong, 0.0)
+    
+    if tong_diem_3_mon < 22.5:
+        return base_ut
+    else:
+        # Công thức giảm tuyến tính (theo yêu cầu của bạn dùng hệ số 7)
+        factor = (30 - tong_diem_3_mon) / 7
+        return round(max(0, factor * base_ut), 2)
 
 def goi_y_nganh_thpt(mon1: float, mon2: float, mon3: float,
                        diem_ut: float = 0.0,

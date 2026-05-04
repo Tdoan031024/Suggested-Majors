@@ -5,8 +5,12 @@ Sử dụng công thức: ĐHB = (ĐHBM1 + ĐHBM2 + ĐHBM3)/3 + Điểm ưu tiê
 Tích hợp Random Forest + Naive Bayes với dữ liệu thực tế 3 năm
 """
 
-from hoc_ba_interface import goi_y_hoc_ba_main
-from hoc_ba_analyzer import HocBaAnalyzer
+try:
+    from scripts.hoc_ba_interface import goi_y_hoc_ba_main
+    from scripts.hoc_ba_analyzer import HocBaAnalyzer
+except ImportError:
+    from hoc_ba_interface import goi_y_hoc_ba_main
+    from hoc_ba_analyzer import HocBaAnalyzer
 
 def goi_y_nganh_hoc_ba():
     """

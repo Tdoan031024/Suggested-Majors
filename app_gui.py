@@ -184,10 +184,9 @@ class IconButton(tk.Frame):
 class ResultTable(tk.Frame):
     COLS = [
         ('rank',  '#',          42,   tk.CENTER),
-        ('ma',    'Mã ngành',   90,   tk.W),
-        ('ten',   'Tên ngành',  360,  tk.W),
-        ('xs',    'Xác suất',   90,   tk.CENTER),
-        ('flags', 'Ghi chú',   180,   tk.W),
+        ('ma',    'Mã ngành',   100,  tk.CENTER),
+        ('ten',   'Tên ngành',  420,  tk.W),
+        ('flags', 'Ghi chú',    220,  tk.CENTER),
     ]
 
     def __init__(self, parent, **kw):
@@ -213,10 +212,8 @@ class ResultTable(tk.Frame):
             self._tree.heading(cid, text=hd)
             self._tree.column(cid, width=w, minwidth=w, anchor=anc)
 
-        self._tree.tag_configure('top',  background=C['row_top'])
-        self._tree.tag_configure('mid',  background=C['row_mid'])
-        self._tree.tag_configure('even', background=C['row_even'])
-        self._tree.tag_configure('odd',  background=C['row_odd'])
+        self._tree.tag_configure('preferred', background='#e8f5e9') # Xanh lá nhạt
+        self._tree.tag_configure('normal',    background='#ffffff') # Trắng
 
         vsb = ttk.Scrollbar(self, orient='vertical', command=self._tree.yview)
         self._tree.configure(yscroll=vsb.set)
@@ -229,12 +226,11 @@ class ResultTable(tk.Frame):
         self.clear()
         if not results:
             self._tree.insert('', tk.END,
-                              values=('—', '—', '  Không có kết quả', '—', ''))
+                              values=('—', '—', '  Không có kết quả', ''))
             return
         for idx, item in enumerate(results, 1):
             ma   = item.get('ma_nganh', '')
             ten  = item.get('ten_nganh', '')
-            xs   = item.get('xac_suat', 0)
             flag_parts = []
             if item.get('to_hop_phu_hop') is True:
                 flag_parts.append('✅ tổ hợp phù hợp')
@@ -244,17 +240,12 @@ class ResultTable(tk.Frame):
                 flag_parts.append('🎯 thuộc nhóm')
             if item.get('thuoc_nhom_mong_muon') is False:
                 flag_parts.append('📊 ngoài nhóm')
-            if idx <= 3:
-                tag = 'top'
-            elif idx <= 6:
-                tag = 'mid'
-            elif idx % 2 == 0:
-                tag = 'even'
+            if item.get('thuoc_nhom_mong_muon') is True:
+                tag = 'preferred'
             else:
-                tag = 'odd'
-            xs_str = f'{xs}%' if isinstance(xs, (int, float)) else str(xs)
+                tag = 'normal'
             self._tree.insert('', tk.END,
-                              values=(idx, ma, ten, xs_str, ', '.join(flag_parts)),
+                              values=(idx, ma, ten, ', '.join(flag_parts)),
                               tags=(tag,))
 
     def clear(self):
@@ -674,13 +665,21 @@ class App(tk.Tk):
             ('Điểm TB Môn 1 (0–10):', 'hb_m1', 3),
             ('Điểm TB Môn 2 (0–10):', 'hb_m2', 4),
             ('Điểm TB Môn 3 (0–10):', 'hb_m3', 5),
-            ('Điểm ưu tiên KV+ĐT (0–3):', 'hb_ut', 6),
         ]
         for lbl_t, attr, r in fields_hb:
             label_row(c_in, lbl_t, r)
-            v = tk.StringVar(value=('0' if attr == 'hb_ut' else ''))
+            v = tk.StringVar(value='')
             styled_entry(c_in, v, 10).grid(row=r, column=1, sticky='w', pady=4)
             setattr(self, attr, v)
+
+        # Ưu tiên mới cho 2026
+        label_row(c_in, 'Khu vực:', 6)
+        self.hb_kv = tk.StringVar(value='KV3')
+        styled_combo(c_in, self.hb_kv, ['KV1', 'KV2-NT', 'KV2', 'KV3'], width=10).grid(row=6, column=1, sticky='w', pady=4)
+
+        label_row(c_in, 'Đối tượng ưu tiên:', 6, col=2)
+        self.hb_dt = tk.StringVar(value='Không thuộc diện ưu tiên')
+        styled_combo(c_in, self.hb_dt, ['Nhóm 1 (01-04)', 'Nhóm 2 (05-07)', 'Không thuộc diện ưu tiên'], width=24).grid(row=6, column=3, sticky='w', pady=4)
 
         btn_r = tk.Frame(c_in, bg=C['card_bg'])
         btn_r.grid(row=7, column=0, columnspan=4, sticky='w', pady=(12, 0))
@@ -703,7 +702,8 @@ class App(tk.Tk):
     def _clear_hocba(self):
         for attr in ('hb_m1', 'hb_m2', 'hb_m3'):
             getattr(self, attr).set('')
-        self.hb_ut.set('0')
+        self.hb_kv.set('KV3')
+        self.hb_dt.set('Không thuộc diện ưu tiên')
         self._tbl_hb.clear()
 
     def _run_hocba(self):
@@ -717,7 +717,7 @@ class App(tk.Tk):
             return
         try:
             m1 = float(self.hb_m1.get()); m2 = float(self.hb_m2.get())
-            m3 = float(self.hb_m3.get()); ut = float(self.hb_ut.get() or 0)
+            m3 = float(self.hb_m3.get())
         except Exception:
             messagebox.showwarning('Giá trị không hợp lệ', 'Điểm phải là số hợp lệ.')
             return
@@ -729,13 +729,17 @@ class App(tk.Tk):
             messagebox.showerror('Thiếu mô hình',
                                  'Chưa có models/hocba_models.pkl. Hãy huấn luyện trước.')
             return
+            
+        # Tính điểm ưu tiên theo quy chế mới 2026
+        ut = analyzer.get_priority_points(self.hb_kv.get(), self.hb_dt.get())
+        
         diem_hb_info = {
             'to_hop':         tohop,
             'mon_hoc':        TO_HOP_MON.get(tohop, []),
             'diem_tb_mon1':   m1,
             'diem_tb_mon2':   m2,
             'diem_tb_mon3':   m3,
-            'diem_hb':        round(m1 + m2 + m3 + ut, 2),
+            'diem_hb':        round(m1 + m2 + m3, 2),
             'diem_xet_tuyen': round(m1 + m2 + m3 + ut, 2),
         }
         self._set_status('Đang xử lý Học bạ…')
@@ -757,21 +761,30 @@ class App(tk.Tk):
 
         label_row(c_in, 'Nhóm ngành:', 0)
         self.tt_group = tk.StringVar()
-        styled_combo(c_in, self.tt_group, GROUP_OPTIONS, width=56).grid(
-            row=0, column=1, columnspan=3, sticky='w', pady=4)
+        cb = styled_combo(c_in, self.tt_group, GROUP_OPTIONS, width=56)
+        cb.grid(row=0, column=1, columnspan=3, sticky='w', pady=4)
 
         section_sep(c_in, 1)
 
-        label_row(c_in, 'Tổng ĐTB 3 năm (thang 30):', 2)
-        self.tt_tb30 = tk.StringVar()
-        styled_entry(c_in, self.tt_tb30, 12).grid(row=2, column=1, sticky='w', pady=4)
+        self.tt_l10 = tk.StringVar(); self.tt_l11 = tk.StringVar(); self.tt_l12 = tk.StringVar()
+        for i, (lbl, var) in enumerate([('ĐTB Lớp 10 (0–10):', self.tt_l10),
+                                        ('ĐTB Lớp 11 (0–10):', self.tt_l11),
+                                        ('ĐTB Lớp 12 (0–10):', self.tt_l12)], 2):
+            label_row(c_in, lbl, i)
+            styled_entry(c_in, var, 12).grid(row=i, column=1, sticky='w', pady=4)
+            var.trace_add('write', self._tt_update_sum)
 
-        label_row(c_in, 'Điểm Tiếng Anh (0–10, tùy chọn):', 3)
+        self._ttSumLbl = label_row(c_in, 'Tổng ĐTB 3 năm (thang 30):', 5)
+        self._ttSumVal = tk.Label(c_in, text='0.0', font=('Segoe UI', 11, 'bold'),
+                                  bg=C['card_bg'], fg=C['accent'])
+        self._ttSumVal.grid(row=5, column=1, sticky='w', pady=4)
+
+        label_row(c_in, 'Điểm Tiếng Anh (0–10, tùy chọn):', 6)
         self.tt_anh = tk.StringVar()
-        styled_entry(c_in, self.tt_anh, 12).grid(row=3, column=1, sticky='w', pady=4)
+        styled_entry(c_in, self.tt_anh, 12).grid(row=6, column=1, sticky='w', pady=4)
 
         btn_r = tk.Frame(c_in, bg=C['card_bg'])
-        btn_r.grid(row=4, column=0, columnspan=4, sticky='w', pady=(12, 0))
+        btn_r.grid(row=7, column=0, columnspan=4, sticky='w', pady=(12, 0))
         IconButton(btn_r, 'Gợi ý ngành', self._run_tuyenthang, icon='🔍').pack(side=tk.LEFT)
         IconButton(btn_r, 'Xóa', self._clear_tuyenthang, icon='🗑',
                    bg='#64748b', hover='#475569').pack(side=tk.LEFT, padx=(10, 0))
@@ -781,9 +794,18 @@ class App(tk.Tk):
         self._tbl_tt = ResultTable(r_in)
         self._tbl_tt.pack(fill=tk.BOTH, expand=True)
 
+    def _tt_update_sum(self, *_):
+        try:
+            s = sum(float(v.get() or 0) for v in (self.tt_l10, self.tt_l11, self.tt_l12))
+            self._ttSumVal.config(text=f'{s:.2f}')
+        except:
+            self._ttSumVal.config(text='0.0')
+
     def _clear_tuyenthang(self):
-        self.tt_tb30.set(''); self.tt_anh.set('')
+        for v in (self.tt_l10, self.tt_l11, self.tt_l12, self.tt_anh):
+            v.set('')
         self._tbl_tt.clear()
+        self._tt_update_sum()
 
     def _run_tuyenthang(self):
         if tt_predict is None:
@@ -793,9 +815,10 @@ class App(tk.Tk):
             messagebox.showwarning('Thiếu thông tin', 'Vui lòng chọn nhóm ngành.')
             return
         try:
-            tb30 = float(self.tt_tb30.get())
+            tb30 = float(self.tt_l10.get() or 0) + float(self.tt_l11.get() or 0) + float(self.tt_l12.get() or 0)
+            if tb30 <= 0: raise ValueError
         except Exception:
-            messagebox.showwarning('Giá trị không hợp lệ', 'Tổng điểm TB phải là số.')
+            messagebox.showwarning('Giá trị không hợp lệ', 'Vui lòng nhập điểm trung bình các năm.')
             return
         try:
             diem_anh = float(self.tt_anh.get()) if self.tt_anh.get() else 0.0
@@ -841,16 +864,18 @@ class App(tk.Tk):
             styled_entry(c_in, v, 10).grid(row=r, column=1, sticky='w', pady=4)
             setattr(self, attr, v)
 
-        label_row(c_in, 'Điểm ưu tiên KV+ĐT:', 6)
-        self.pt1_ut = tk.StringVar(value='0')
-        styled_entry(c_in, self.pt1_ut, 10).grid(row=6, column=1, sticky='w', pady=4)
+        # Ưu tiên mới cho 2026
+        label_row(c_in, 'Khu vực:', 6)
+        self.pt1_kv = tk.StringVar(value='KV3')
+        styled_combo(c_in, self.pt1_kv, ['KV1', 'KV2-NT', 'KV2', 'KV3'], width=10).grid(row=6, column=1, sticky='w', pady=4)
 
-        label_row(c_in, 'Thứ tự nguyện vọng (1–5):', 6, col=2)
-        self.pt1_nv = tk.StringVar(value='1')
-        styled_entry(c_in, self.pt1_nv, 8).grid(row=6, column=3, sticky='w', pady=4)
+        label_row(c_in, 'Đối tượng ưu tiên:', 7)
+        self.pt1_dt = tk.StringVar(value='Không ưu tiên')
+        styled_combo(c_in, self.pt1_dt, ['Nhóm 1 (01-04)', 'Nhóm 2 (05-07)', 'Không ưu tiên'], width=24).grid(row=7, column=1, sticky='w', pady=4)
+
 
         btn_r = tk.Frame(c_in, bg=C['card_bg'])
-        btn_r.grid(row=7, column=0, columnspan=4, sticky='w', pady=(12, 0))
+        btn_r.grid(row=8, column=0, columnspan=4, sticky='w', pady=(12, 0))
         IconButton(btn_r, 'Gợi ý ngành', self._run_pt1, icon='🔍').pack(side=tk.LEFT)
         IconButton(btn_r, 'Xóa', self._clear_pt1, icon='🗑',
                    bg='#64748b', hover='#475569').pack(side=tk.LEFT, padx=(10, 0))
@@ -870,7 +895,8 @@ class App(tk.Tk):
     def _clear_pt1(self):
         for attr in ('pt1_m1', 'pt1_m2', 'pt1_m3'):
             getattr(self, attr).set('')
-        self.pt1_ut.set('0'); self.pt1_nv.set('1')
+        self.pt1_kv.set('KV3')
+        self.pt1_dt.set('Không ưu tiên')
         self._tbl_pt1.clear()
 
     def _run_pt1(self):
@@ -883,15 +909,18 @@ class App(tk.Tk):
             messagebox.showwarning('Thiếu thông tin', 'Vui lòng chọn nhóm ngành và tổ hợp.')
             return
         try:
-            m1 = float(self.pt1_m1.get())
-            m2 = float(self.pt1_m2.get())
-            m3 = float(self.pt1_m3.get())
-            ut = float(self.pt1_ut.get() or 0)
-            nv = int(self.pt1_nv.get() or 1)
+            m1 = float(self.pt1_m1.get()); m2 = float(self.pt1_m2.get())
+            m3 = float(self.pt1_m3.get()); nv = 1
         except Exception:
-            messagebox.showwarning('Giá trị không hợp lệ',
-                                   'Điểm / thứ tự NV phải là số hợp lệ.')
+            messagebox.showwarning('Giá trị không hợp lệ', 'Điểm phải là số hợp lệ.')
             return
+
+        # Tính điểm ưu tiên theo quy chế mới (giảm tuyến tính cho điểm cao)
+        try:
+            import scripts.Goi_y_nganh_thpt as pt1_mod
+            ut = pt1_mod.calculate_priority_pt1(m1 + m2 + m3, self.pt1_kv.get(), self.pt1_dt.get())
+        except Exception:
+            ut = 0.0
         self._set_status('Đang xử lý THPT QG…')
         results = goi_y_nganh_thpt(m1, m2, m3, diem_ut=ut, thu_tu_nv=nv,
                                     tohop=tohop, nguyen_vong=group, top_n=12)
