@@ -13,12 +13,24 @@ ROOT = Path(SPECPATH).parent
 added_data = [
     # Toàn bộ thư mục models/
     (str(ROOT / 'models'), 'models'),
-    # File dữ liệu gốc (phòng khi runtime cần đọc thêm)
-    (str(ROOT / 'DXDuong.xlsx'), '.'),
+    # Logo và icon dùng trong cửa sổ desktop
+    (str(ROOT / 'apps' / 'desktop' / 'assets'), 'apps/desktop/assets'),
+    # Dataset nghiên cứu (giữ tương thích với bản đóng gói trước)
+    (str(ROOT / 'data' / 'DXDuong.xlsx'), 'data'),
 ]
 
 # ── Hidden imports bắt buộc khi pack sklearn/numpy/pandas ────────────────
 hidden_imports = [
+    'apps',
+    'apps.desktop.app',
+    'apps.desktop.theme',
+    'huit_career_advisor',
+    'huit_career_advisor.domain.advisory',
+    'huit_career_advisor.domain.catalog',
+    'huit_career_advisor.inference.academic_record',
+    'huit_career_advisor.inference.dgnl',
+    'huit_career_advisor.inference.direct_admission',
+    'huit_career_advisor.inference.thpt',
     'scripts', # Đảm bảo package scripts được nhận diện
     'scripts.Goi_y_nganh_nghe',
     'scripts.Goi_y_nganh_hoc_ba',
@@ -92,7 +104,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ROOT / 'app_icon.ico'),
+    icon=str(ROOT / 'apps' / 'desktop' / 'assets' / 'app_icon.ico'),
     version=None,
 )
 

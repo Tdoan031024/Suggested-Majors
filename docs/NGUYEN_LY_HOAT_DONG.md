@@ -349,11 +349,11 @@ english_boost = 1.1        # +10%
      ↓
 [Post-processing] → [Business Rules]
      ↓
-[Ranking & Filtering] → [GUI/CLI Output]
+[Ranking & Filtering] → [Desktop GUI Output]
 ```
 
 ### 🔄 Runtime không phụ thuộc Excel
-- **Training time**: Đọc `DXDuong.xlsx` → huấn luyện → lưu `.pkl`
+- **Training time**: Đọc `data/DXDuong.xlsx` → huấn luyện → lưu `models/*.pkl`
 - **Runtime**: Chỉ load `.pkl` → suy luận nhanh
 - **Benefit**: Tốc độ cao, không cần Excel khi triển khai
 

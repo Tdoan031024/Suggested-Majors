@@ -28,7 +28,7 @@ DefaultDirName={autopf}\HUIT_GoiYNganh
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 ; Icon ứng dụng (bỏ comment nếu có file .ico)
-SetupIconFile=..\app_icon.ico
+SetupIconFile=..\apps\desktop\assets\app_icon.ico
 OutputBaseFilename=HUIT_GoiYNganh_Setup_v{#AppVersion}
 OutputDir=installer_output
 Compression=lzma2/ultra64

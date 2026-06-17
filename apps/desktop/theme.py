@@ -1,0 +1,156 @@
+"""Shared visual tokens and navigation data for the desktop application."""
+
+LIGHT_COLORS = {
+    "header_bg": "#FFFFFF",
+    "sidebar_bg": "#F8FAFC",
+    "sidebar_hover": "#EFF6FF",
+    "sidebar_active": "#DBEAFE",
+    "content_bg": "#F8FAFC",
+    "card_bg": "#FFFFFF",
+    "card_border": "#E5E7EB",
+    "card_shadow": "#E2E8F0",
+    "surface_alt": "#F1F5F9",
+    "surface_hover": "#E0EAFF",
+    "surface_pressed": "#CBD5E1",
+    "text_dark": "#0F172A",
+    "text_muted": "#64748B",
+    "text_subtle": "#94A3B8",
+    "text_light": "#475569",
+    "text_header": "#0F172A",
+    "accent": "#2563EB",
+    "accent_dark": "#1D4ED8",
+    "accent_hover": "#1D4ED8",
+    "accent_pressed": "#1E40AF",
+    "accent_soft": "#DBEAFE",
+    "accent_ring": "#93C5FD",
+    "ai_accent": "#7C3AED",
+    "ai_soft": "#EDE9FE",
+    "success": "#10B981",
+    "success_light": "#D1FAE5",
+    "warning": "#F59E0B",
+    "warning_light": "#FEF3C7",
+    "danger": "#EF4444",
+    "row_even": "#F8FAFC",
+    "row_odd": "#FFFFFF",
+    "row_hover": "#EFF6FF",
+    "row_top": "#D1FAE5",
+    "row_mid": "#FEF3C7",
+    "input_bg": "#FFFFFF",
+    "input_focus": "#F5FAFF",
+    "sep": "#E5E7EB",
+    "status_bg": "#FBFBFD",
+    "secondary": "#F1F5F9",
+    "secondary_hover": "#E2E8F0",
+    "secondary_pressed": "#CBD5E1",
+    "ghost": "#00000000",
+    "danger_soft": "#FFECEA",
+}
+
+DARK_COLORS = {
+    "header_bg": "#0F172A",
+    "sidebar_bg": "#0F172A",
+    "sidebar_hover": "#1E293B",
+    "sidebar_active": "#172554",
+    "content_bg": "#0F172A",
+    "card_bg": "#1E293B",
+    "card_border": "#334155",
+    "card_shadow": "#020617",
+    "surface_alt": "#1E293B",
+    "surface_hover": "#24324A",
+    "surface_pressed": "#334155",
+    "text_dark": "#F8FAFC",
+    "text_muted": "#CBD5E1",
+    "text_subtle": "#94A3B8",
+    "text_light": "#CBD5E1",
+    "text_header": "#F8FAFC",
+    "accent": "#60A5FA",
+    "accent_dark": "#2563EB",
+    "accent_hover": "#3B82F6",
+    "accent_pressed": "#2563EB",
+    "accent_soft": "#1E3A8A",
+    "accent_ring": "#60A5FA",
+    "ai_accent": "#A78BFA",
+    "ai_soft": "#312E81",
+    "success": "#34D399",
+    "success_light": "#064E3B",
+    "warning": "#FBBF24",
+    "warning_light": "#78350F",
+    "danger": "#F87171",
+    "row_even": "#0F172A",
+    "row_odd": "#1E293B",
+    "row_hover": "#1E3A8A",
+    "row_top": "#064E3B",
+    "row_mid": "#78350F",
+    "input_bg": "#0F172A",
+    "input_focus": "#172554",
+    "sep": "#334155",
+    "status_bg": "#0F172A",
+    "secondary": "#1E293B",
+    "secondary_hover": "#334155",
+    "secondary_pressed": "#475569",
+    "ghost": "#00000000",
+    "danger_soft": "#3A1717",
+}
+
+# Mutable palette used by existing widgets. App updates it in place at runtime.
+COLORS = LIGHT_COLORS.copy()
+
+
+def get_theme_colors(theme_name):
+    """Return a copy of the requested color palette."""
+    return (DARK_COLORS if theme_name == "dark" else LIGHT_COLORS).copy()
+
+FONTS = {
+    "app_title": ("Segoe UI", 18, "bold"),
+    "app_sub": ("Segoe UI", 10),
+    "nav": ("Segoe UI", 10, "bold"),
+    "section": ("Segoe UI", 13, "bold"),
+    "label": ("Segoe UI", 10),
+    "label_b": ("Segoe UI", 10, "bold"),
+    "entry": ("Segoe UI", 10),
+    "button": ("Segoe UI", 10, "bold"),
+    "result_h": ("Segoe UI", 10, "bold"),
+    "result": ("Segoe UI", 10),
+    "status": ("Segoe UI", 9),
+    "small": ("Segoe UI", 9),
+    "small_medium": ("Segoe UI", 9, "bold"),
+    "page_title": ("Segoe UI", 28, "bold"),
+    "hero_title": ("Segoe UI", 18, "bold"),
+    "metric": ("Segoe UI", 22, "bold"),
+}
+
+RADIUS = {
+    "sm": 8,
+    "md": 12,
+    "lg": 18,
+    "xl": 24,
+}
+
+SPACING = {
+    "xs": 6,
+    "sm": 10,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+}
+
+GROUP_OPTIONS = [
+    "Công nghệ - Chế biến - Thực phẩm",
+    "Kỹ thuật - Cơ khí - Tự động hóa",
+    "Hóa học - Sinh học - Môi trường - Vật liệu",
+    "Công nghệ thông tin - Trí tuệ nhân tạo - Dữ liệu",
+    "Kinh doanh - Quản trị - Marketing",
+    "Kế toán - Tài chính - Ngân hàng",
+    "Logistics - Quản lý chuỗi cung ứng - Kinh doanh chuyên biệt",
+    "Luật - Xã hội - Ngôn ngữ",
+    "Du lịch - Nhà hàng - Khách sạn - Dịch vụ",
+]
+
+NAV_ITEMS = [
+    ("🏠", "Tổng quan", "Chọn phương thức phù hợp"),
+    ("📊", "ĐGNL", "Đánh giá năng lực"),
+    ("📚", "Học bạ", "Xét học bạ THPT"),
+    ("🎯", "Tuyển thẳng", "Xét tuyển thẳng"),
+    ("📝", "THPT QG", "Điểm thi THPT"),
+    ("🤖", "Trợ lý AI", "Tư vấn hướng nghiệp"),
+]

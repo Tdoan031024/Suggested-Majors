@@ -71,7 +71,7 @@ Write-Host "=====================================================" -ForegroundCo
 Write-Host "  THƯ MỤC ĐẦU RA: dist\HUIT_GoiYNganh\"
 Write-Host "  - File chính: HUIT_GoiYNganh.exe"
 Write-Host "  - Thư mục models: Chứa các file .pkl"
-Write-Host "  - Dữ liệu: DXDuong.xlsx"
+Write-Host "  - Dữ liệu nghiên cứu: data\DXDuong.xlsx"
 Write-Host "-----------------------------------------------------"
 Write-Host "  LƯU Ý: Khi copy cho máy khác, hãy nén cả thư mục"
 Write-Host "  dist\HUIT_GoiYNganh thành file .zip"
