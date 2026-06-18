@@ -87,14 +87,21 @@ def calculate_priority_pt1(tong_diem_3_mon: float, khu_vuc: str, doi_tuong: str)
     map_kv = {'KV1': 0.75, 'KV2-NT': 0.5, 'KV2': 0.25, 'KV3': 0.0}
     map_dt = {'Nhóm 1 (01-04)': 2.0, 'Nhóm 2 (05-07)': 1.0, 'Không ưu tiên': 0.0}
     
+    try:
+        tong_diem_3_mon = float(tong_diem_3_mon)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if tong_diem_3_mon < 0 or tong_diem_3_mon > 30:
+        return 0.0
+
     base_ut = map_kv.get(khu_vuc, 0.0) + map_dt.get(doi_tuong, 0.0)
     
-    if tong_diem_3_mon < 22.5:
-        return base_ut
+    if tong_diem_3_mon <= 22.5:
+        return round(base_ut, 2)
     else:
-        # Công thức giảm tuyến tính (theo yêu cầu của bạn dùng hệ số 7)
-        factor = (30 - tong_diem_3_mon) / 7
-        return round(max(0, factor * base_ut), 2)
+        factor = (30 - tong_diem_3_mon) / 7.5
+        return round(max(0.0, factor * base_ut), 2)
 
 def goi_y_nganh_thpt(mon1: float, mon2: float, mon3: float,
                        diem_ut: float = 0.0,
@@ -109,6 +116,17 @@ def goi_y_nganh_thpt(mon1: float, mon2: float, mon3: float,
     tohop: mã tổ hợp nếu biết (A00/A01/D01/B00/C00/...)
     nguyen_vong: tên nhóm ưa thích (CNTT, Kỹ thuật, ...)
     """
+    try:
+        mon1 = float(mon1)
+        mon2 = float(mon2)
+        mon3 = float(mon3)
+        diem_ut = float(diem_ut)
+    except (TypeError, ValueError):
+        return [{'ma_nganh': None, 'ten_nganh': 'Điểm THPT không hợp lệ', 'xac_suat': 0.0}]
+
+    if not all(0 <= x <= 10 for x in (mon1, mon2, mon3)) or diem_ut < 0:
+        return [{'ma_nganh': None, 'ten_nganh': 'Điểm THPT không hợp lệ', 'xac_suat': 0.0}]
+
     payload = _load_pt1_model()
     if payload is None:
         # Không có mô hình → trả rỗng kèm lý do
@@ -137,13 +155,13 @@ def goi_y_nganh_thpt(mon1: float, mon2: float, mon3: float,
             tohop_enc = 0
 
     year = 2024  # PT1 áp dụng cho 2025, dùng 2024 như mốc nội suy
-    diem_tong = float(mon1) + float(mon2) + float(mon3) + float(diem_ut)
+    diem_tong = mon1 + mon2 + mon3 + diem_ut
 
     row = {
-        'Mon1': float(mon1),
-        'Mon2': float(mon2),
-        'Mon3': float(mon3),
-        'Diem_UT': float(diem_ut),
+        'Mon1': mon1,
+        'Mon2': mon2,
+        'Mon3': mon3,
+        'Diem_UT': diem_ut,
         'ThuTuNV': int(thu_tu_nv),
         'ToHop_Enc': float(tohop_enc),
         'Year': float(year),

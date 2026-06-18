@@ -32,11 +32,12 @@ def goi_y_nganh_simple(diem_dgnl, diem_dt=0, diem_kv=3, thu_tu_nv=1, nguyen_vong
         return [{'ma_nganh': 'Error', 'ten_nganh': 'Models not loaded', 'xac_suat': 0}]
     
     try:
+        diem_dgnl = float(diem_dgnl)
         rf_model = DGNL_MODELS['rf_model']
         nb_model = DGNL_MODELS['nb_model'] 
         le_nganh = DGNL_MODELS['le_nganh']
         
-        if not (0 <= diem_dgnl <= 1200):
+        if not (600 <= diem_dgnl <= 1200):
             return [{'ma_nganh': 'Error', 'ten_nganh': 'Điểm DGNL không hợp lệ', 'xac_suat': 0}]
         
         results = []

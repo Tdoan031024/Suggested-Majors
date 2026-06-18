@@ -99,6 +99,7 @@ class RoundedCard(tk.Frame):
         self.grid_propagate(False)
         self._radius = radius or RADIUS['lg']
         self._fill_key = fill_key
+        self._fixed_height = None
         self._canvas = tk.Canvas(
             self,
             width=1,
@@ -110,8 +111,8 @@ class RoundedCard(tk.Frame):
         self._canvas.pack(fill=tk.BOTH, expand=True)
         self._inner = tk.Frame(self._canvas, bg=C[self._fill_key], padx=padx, pady=pady)
         self._window = self._canvas.create_window(
+            12,
             8,
-            6,
             window=self._inner,
             anchor='nw',
         )
@@ -133,22 +134,28 @@ class RoundedCard(tk.Frame):
         self.after_idle(self._sync_height)
 
     def _sync_height(self, _event=None):
-        requested = max(80, self._inner.winfo_reqheight() + 18)
+        requested = self._fixed_height or max(96, self._inner.winfo_reqheight() + 32)
         current_req = self._canvas.winfo_reqheight()
         if abs(current_req - requested) > 2:
             self.configure(height=requested)
             self._canvas.configure(height=requested)
         self._redraw()
 
+    def set_fixed_height(self, height):
+        self._fixed_height = height
+        self.configure(height=height)
+        self._canvas.configure(height=height)
+        self._redraw()
+
     def _redraw(self, event=None):
         width = event.width if event else self.winfo_width()
-        height = event.height if event else max(self._inner.winfo_reqheight() + 14, 80)
+        height = event.height if event else self._fixed_height or max(self._inner.winfo_reqheight() + 32, 96)
         self._canvas.delete('card')
         self._canvas.configure(bg=self.master.cget('bg'))
         rounded_rect(
             self._canvas,
-            8,
-            8,
+            12,
+            14,
             max(8, width - 2),
             max(8, height - 2),
             self._radius,
@@ -160,18 +167,19 @@ class RoundedCard(tk.Frame):
             self._canvas,
             2,
             2,
-            max(2, width - 8),
-            max(2, height - 8),
+            max(2, width - 12),
+            max(2, height - 14),
             self._radius,
             fill=C[self._fill_key],
             outline='',
             tags='card',
         )
         self._canvas.tag_lower('card')
+        self._canvas.coords(self._window, 12, 8)
         self._canvas.itemconfigure(
             self._window,
-            width=max(10, width - 20),
-            height=max(10, height - 18),
+            width=max(10, width - 30),
+            height=max(10, height - 30),
         )
 
     def apply_theme(self):
@@ -217,6 +225,40 @@ class RoundedCard(tk.Frame):
             except (tk.TclError, TypeError):
                 pass
             self._sync_descendant_backgrounds(child)
+
+
+class SoftDivider(tk.Canvas):
+    """Minimal divider used to separate app chrome regions."""
+
+    def __init__(self, parent, orientation='horizontal'):
+        self._orientation = orientation
+        width = 1 if orientation == 'vertical' else 1
+        height = 1 if orientation == 'horizontal' else 1
+        super().__init__(
+            parent,
+            width=width,
+            height=height,
+            bg=C['content_bg'],
+            highlightthickness=0,
+            bd=0,
+        )
+        self.bind('<Configure>', self._draw)
+
+    def _draw(self, event=None):
+        width = event.width if event else max(self.winfo_width(), 1)
+        height = event.height if event else max(self.winfo_height(), 1)
+        self.delete('all')
+        self.configure(bg=C['content_bg'])
+        if self._orientation == 'horizontal':
+            self.create_rectangle(0, 0, width, height, fill=C['content_bg'], outline='')
+            self.create_line(0, 0, width, 0, fill=C['sep'], width=1)
+            return
+
+        self.create_rectangle(0, 0, width, height, fill=C['content_bg'], outline='')
+        self.create_line(0, 0, 0, height, fill=C['sep'], width=1)
+
+    def apply_theme(self):
+        self._draw()
 
 
 def make_card(parent, title=None, padx=16, pady=12):
@@ -368,7 +410,7 @@ class ResultTable(tk.Frame):
         ('rank',  '#',          42,   tk.CENTER),
         ('ma',    'Mã ngành',   100,  tk.CENTER),
         ('ten',   'Tên ngành',  420,  tk.W),
-        ('prob',  'Phù hợp',    90,   tk.CENTER),
+        ('prob',  'Đánh giá',   110,  tk.CENTER),
         ('flags', 'Ghi chú',    210,  tk.CENTER),
     ]
 
@@ -451,13 +493,7 @@ class ResultTable(tk.Frame):
                 tag = 'preferred'
             else:
                 tag = 'even' if idx % 2 == 0 else 'odd'
-            probability = item.get('xac_suat')
-            probability_text = ''
-            if probability is not None:
-                try:
-                    probability_text = f'{float(probability):.1f}%'
-                except (TypeError, ValueError):
-                    probability_text = str(probability)
+            probability_text = 'Phù hợp'
             self._tree.insert('', tk.END,
                               values=(idx, ma, ten, probability_text,
                                       ', '.join(flag_parts)),
@@ -710,6 +746,15 @@ class App(tk.Tk):
         self.profile_economy = tk.StringVar(value=ECONOMY_OPTIONS[0])
         self.profile_personality = tk.StringVar(value=PERSONALITY_OPTIONS[0])
         self.profile_mobility = tk.StringVar(value=MOBILITY_OPTIONS[0])
+        self.profile_interest_display = tk.StringVar(value='Chưa xác định')
+        self.profile_career_goal = tk.StringVar(value='Dễ xin việc')
+        self.profile_geography_display = tk.StringVar(value='Đô thị lớn')
+        self.profile_mobility_display = tk.StringVar(value='Sẵn sàng học xa nhà')
+        self.profile_family_display = tk.StringVar(value='Không xác định')
+        self.profile_learning_style = tk.StringVar(value='Học qua dự án')
+        self.profile_work_environment = tk.StringVar(value='Văn phòng')
+        self._selected_profile_traits = set()
+        self._profile_trait_chips = {}
         self._profile_summary_var = tk.StringVar()
         for variable in (
             self.profile_interest,
@@ -720,6 +765,14 @@ class App(tk.Tk):
             self.profile_mobility,
         ):
             variable.trace_add('write', self._update_profile_summary)
+        for variable in (
+            self.profile_interest_display,
+            self.profile_geography_display,
+            self.profile_mobility_display,
+            self.profile_family_display,
+        ):
+            variable.trace_add('write', self._sync_orientation_profile)
+        self._sync_orientation_profile()
         self._update_profile_summary()
 
     def _current_profile(self):
@@ -841,6 +894,8 @@ class App(tk.Tk):
         body = tk.Frame(self, bg=C['content_bg'])
         body.pack(fill=tk.BOTH, expand=True)
         self._build_sidebar(body)
+        self._sidebar_separator = SoftDivider(body, orientation='vertical')
+        self._sidebar_separator.pack(side=tk.LEFT, fill=tk.Y)
         self._content_host = tk.Frame(body, bg=C['content_bg'])
         self._content_host.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
                                 padx=(30, 34), pady=(26, 30))
@@ -890,16 +945,25 @@ class App(tk.Tk):
                  font=F['app_sub'], bg=C['header_bg'], fg=C['text_muted']).pack(anchor=tk.W)
 
         self._clock_var = tk.StringVar()
-        avatar = tk.Frame(hdr, bg=C['accent_soft'], width=38, height=38)
-        avatar.pack(side=tk.RIGHT, padx=(10, 24))
-        avatar.pack_propagate(False)
-        tk.Label(
-            avatar,
-            text='HS',
-            bg=C['accent_soft'],
-            fg=C['accent'],
-            font=F['small_medium'],
-        ).pack(fill=tk.BOTH, expand=True)
+        logo_right = tk.Frame(hdr, bg=C['header_bg'], width=42, height=42)
+        logo_right.pack(side=tk.RIGHT, padx=(10, 24))
+        logo_right.pack_propagate(False)
+        self._header_right_logo = self._header_logo
+        if self._header_right_logo is not None:
+            tk.Label(
+                logo_right,
+                image=self._header_right_logo,
+                bg=C['header_bg'],
+                bd=0,
+            ).pack(fill=tk.BOTH, expand=True)
+        else:
+            tk.Label(
+                logo_right,
+                text='H',
+                bg=C['accent'],
+                fg='#FFFFFF',
+                font=('Segoe UI', 14, 'bold'),
+            ).pack(fill=tk.BOTH, expand=True)
 
         clock = tk.Frame(hdr, bg=C['surface_alt'], padx=14, pady=8)
         clock.pack(side=tk.RIGHT, padx=(10, 24))
@@ -907,6 +971,8 @@ class App(tk.Tk):
                  font=F['small'], bg=C['surface_alt'], fg=C['text_muted']).pack()
         self._build_theme_toggle(hdr)
         self._tick()
+        self._header_separator = SoftDivider(self, orientation='horizontal')
+        self._header_separator.pack(fill=tk.X)
 
     def _build_theme_toggle(self, parent):
         self._theme_toggle = tk.Frame(
@@ -971,6 +1037,12 @@ class App(tk.Tk):
 
         self._style_chat_widgets()
         self._update_theme_toggle_text()
+        for attr in ('_header_separator', '_sidebar_separator'):
+            separator = getattr(self, attr, None)
+            if separator is not None:
+                separator.apply_theme()
+        for trait in getattr(self, '_profile_trait_chips', {}):
+            self._draw_profile_chip(trait)
         if hasattr(self, '_nav_btns'):
             if hasattr(self, '_sidebar'):
                 self._sidebar.configure(bg=C['sidebar_bg'])
@@ -1018,6 +1090,8 @@ class App(tk.Tk):
             widget.apply_theme()
         elif isinstance(widget, RoundedCard):
             widget.apply_theme()
+        elif isinstance(widget, SoftDivider):
+            widget.apply_theme()
         for child in widget.winfo_children():
             self._apply_component_theme(child)
 
@@ -1026,7 +1100,7 @@ class App(tk.Tk):
             return
         try:
             self.chat_log.configure(
-                bg=C['input_bg'],
+                bg=C['surface_alt'],
                 fg=C['text_dark'],
                 insertbackground=C['accent'],
                 selectbackground=C['accent_soft'],
@@ -1036,16 +1110,16 @@ class App(tk.Tk):
                 'student_tag', font=F['label_b'], foreground=C['accent'])
             self.chat_log.tag_configure(
                 'student_msg', font=F['label'], foreground=C['text_dark'],
-                lmargin1=110, rmargin=12, spacing1=3, spacing3=8)
+                lmargin1=120, rmargin=18, spacing1=4, spacing3=12)
             self.chat_log.tag_configure(
-                'ai_tag', font=F['label_b'], foreground=C['success'])
+                'ai_tag', font=F['label_b'], foreground=C['ai_accent'])
             self.chat_log.tag_configure(
                 'ai_msg', font=F['label'], foreground=C['text_dark'],
-                lmargin1=12, rmargin=110, spacing1=3, spacing3=8)
+                lmargin1=18, rmargin=120, spacing1=4, spacing3=12)
             self.chat_log.tag_configure(
                 'system_card', font=F['result'], foreground=C['text_muted'],
-                background=C['surface_alt'], lmargin1=24, rmargin=24,
-                spacing1=6, spacing3=6)
+                background=C['card_bg'], lmargin1=24, rmargin=24,
+                spacing1=8, spacing3=8)
         except tk.TclError:
             pass
 
@@ -1422,6 +1496,302 @@ class App(tk.Tk):
             )
         return start_row + 3
 
+    @staticmethod
+    def _profile_group_by_keyword(*keywords):
+        for group in GROUP_OPTIONS:
+            normalized = group.lower()
+            if any(keyword.lower() in normalized for keyword in keywords):
+                return group
+        return NONE_OPTION
+
+    def _sync_orientation_profile(self, *_):
+        interest_map = {
+            'Công nghệ thông tin': self._profile_group_by_keyword('công nghệ thông tin'),
+            'Kỹ thuật': self._profile_group_by_keyword('kỹ thuật'),
+            'Kinh doanh': self._profile_group_by_keyword('kinh doanh', 'quản trị'),
+            'Marketing': self._profile_group_by_keyword('marketing'),
+            'Du lịch': self._profile_group_by_keyword('du lịch'),
+            'Thực phẩm': self._profile_group_by_keyword('thực phẩm'),
+            'Y tế': self._profile_group_by_keyword('hóa học', 'sinh học'),
+            'Giáo dục': self._profile_group_by_keyword('luật', 'xã hội', 'ngôn ngữ'),
+            'Nghệ thuật': self._profile_group_by_keyword('marketing'),
+            'Chưa xác định': NONE_OPTION,
+        }
+        family_map = {
+            'Kinh doanh': self._profile_group_by_keyword('kinh doanh', 'quản trị'),
+            'Giáo viên': self._profile_group_by_keyword('luật', 'xã hội', 'ngôn ngữ'),
+            'Công chức': self._profile_group_by_keyword('luật', 'xã hội'),
+            'Kỹ sư': self._profile_group_by_keyword('kỹ thuật'),
+            'Bác sĩ': self._profile_group_by_keyword('hóa học', 'sinh học'),
+            'Nông nghiệp': self._profile_group_by_keyword('thực phẩm'),
+            'Thủy sản': self._profile_group_by_keyword('thực phẩm'),
+            'Công nhân': self._profile_group_by_keyword('kỹ thuật'),
+            'Không xác định': NONE_OPTION,
+        }
+        geography_map = {
+            'Đô thị lớn': 'Đô thị lớn',
+            'Đô thị vừa': 'Thị xã / ven đô',
+            'Nông thôn': 'Nông thôn',
+            'Miền núi': 'Vùng xa / khó khăn',
+            'Ven biển': 'Thị xã / ven đô',
+            'Khu công nghiệp': 'Thị xã / ven đô',
+        }
+        economy_map = {
+            'Đô thị lớn': 'Công nghệ số - thương mại',
+            'Đô thị vừa': 'Đa dạng',
+            'Nông thôn': 'Nông nghiệp - thực phẩm',
+            'Miền núi': 'Nông nghiệp - thực phẩm',
+            'Ven biển': 'Dịch vụ - du lịch',
+            'Khu công nghiệp': 'Công nghiệp - sản xuất',
+        }
+        mobility_map = {
+            'Chỉ học gần nhà': 'Cần học gần nhà',
+            'Có thể học trong tỉnh': 'Ưu tiên trường trong khu vực',
+            'Có thể học tại TP.HCM hoặc Hà Nội': 'Ưu tiên trường trong khu vực',
+            'Sẵn sàng học xa nhà': 'Sẵn sàng học xa nhà',
+        }
+        self.profile_interest.set(interest_map.get(self.profile_interest_display.get(), NONE_OPTION))
+        self.profile_family.set(family_map.get(self.profile_family_display.get(), NONE_OPTION))
+        self.profile_geography.set(geography_map.get(self.profile_geography_display.get(), GEOGRAPHY_OPTIONS[0]))
+        self.profile_economy.set(economy_map.get(self.profile_geography_display.get(), ECONOMY_OPTIONS[0]))
+        self.profile_mobility.set(mobility_map.get(self.profile_mobility_display.get(), MOBILITY_OPTIONS[0]))
+
+    def _sync_profile_traits(self):
+        if not self._selected_profile_traits:
+            self.profile_personality.set(PERSONALITY_OPTIONS[0])
+            return
+        trait_text = ' '.join(self._selected_profile_traits)
+        if any(key in trait_text for key in ('logic', 'nghiên cứu')):
+            self.profile_personality.set('Phân tích - công nghệ')
+        elif any(key in trait_text for key in ('sáng tạo', 'giao tiếp', 'nhóm')):
+            self.profile_personality.set('Sáng tạo - giao tiếp')
+        elif any(key in trait_text for key in ('lãnh đạo', 'tỉ mỉ')):
+            self.profile_personality.set('Tổ chức - kinh doanh')
+        elif 'ngoài trời' in trait_text:
+            self.profile_personality.set('Thực hành - kỹ thuật')
+        else:
+            self.profile_personality.set(PERSONALITY_OPTIONS[0])
+
+    def _profile_field(self, parent, label, variable, values, row, column):
+        tk.Label(
+            parent,
+            text=label,
+            bg=C['card_bg'],
+            fg=C['text_dark'],
+            font=F['label_b'],
+            anchor='w',
+        ).grid(row=row * 2, column=column, sticky='w', pady=(0, 6))
+        styled_combo(parent, variable, values, width=24).grid(
+            row=row * 2 + 1,
+            column=column,
+            sticky='ew',
+            padx=(0, 14) if column == 0 else 0,
+            pady=(0, 14),
+        )
+
+    def _profile_group_card(self, parent, row, column, title, subtitle='', columnspan=1, icon=''):
+        card = RoundedCard(parent, padx=22, pady=18, radius=20)
+        content = card.content
+        card.grid(
+            row=row,
+            column=column,
+            columnspan=columnspan,
+            sticky='nsew',
+            padx=(0, 12) if column == 0 and columnspan == 1 else (12, 0) if column == 1 else 0,
+            pady=(0, 18),
+        )
+        head = tk.Frame(content, bg=C['card_bg'])
+        head.pack(fill=tk.X, pady=(0, 8))
+        if icon:
+            tk.Label(
+                head,
+                text=icon,
+                bg=C['accent_soft'],
+                fg=C['accent'],
+                font=('Segoe UI Emoji', 15),
+                width=3,
+            ).pack(side=tk.LEFT, padx=(0, 10), ipady=4)
+        title_box = tk.Frame(head, bg=C['card_bg'])
+        title_box.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(
+            title_box,
+            text=title,
+            bg=C['card_bg'],
+            fg=C['text_dark'],
+            font=F['section'],
+            anchor='w',
+        ).pack(anchor=tk.W)
+        if subtitle:
+            tk.Label(
+                title_box,
+                text=subtitle,
+                bg=C['card_bg'],
+                fg=C['text_muted'],
+                font=F['small'],
+                wraplength=360,
+                justify=tk.LEFT,
+            ).pack(anchor=tk.W, pady=(3, 0))
+        body = tk.Frame(content, bg=C['card_bg'])
+        body.pack(fill=tk.X)
+        for index in range(2):
+            body.grid_columnconfigure(index, weight=1, uniform='profile_fields')
+        return body
+
+    def _profile_chip(self, parent, text, index=0):
+        chip = tk.Label(
+            parent,
+            text=text,
+            bg=C['secondary'],
+            fg=C['text_dark'],
+            font=F['small_medium'],
+            padx=12,
+            pady=7,
+            cursor='hand2',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=C['card_border'],
+        )
+        chip.bind('<Button-1>', lambda _event, value=text: self._toggle_profile_trait(value))
+        chip.bind('<Enter>', lambda _event, value=text: self._hover_profile_chip(value, True))
+        chip.bind('<Leave>', lambda _event, value=text: self._hover_profile_chip(value, False))
+        chip.grid(row=index // 4, column=index % 4, sticky='w', padx=(0, 12), pady=(0, 10))
+        self._profile_trait_chips[text] = chip
+        self._draw_profile_chip(text)
+
+    def _hover_profile_chip(self, text, active):
+        chip = self._profile_trait_chips.get(text)
+        if chip is None or text in self._selected_profile_traits:
+            return
+        chip.configure(bg=C['surface_hover'] if active else C['secondary'])
+
+    def _toggle_profile_trait(self, text):
+        if text in self._selected_profile_traits:
+            self._selected_profile_traits.remove(text)
+        else:
+            self._selected_profile_traits.add(text)
+        self._draw_profile_chip(text)
+        self._sync_profile_traits()
+
+    def _draw_profile_chip(self, text):
+        chip = self._profile_trait_chips.get(text)
+        if chip is None:
+            return
+        selected = text in self._selected_profile_traits
+        chip.configure(
+            text=f'✓ {text}' if selected else text,
+            bg=C['accent'] if selected else C['secondary'],
+            fg='#FFFFFF' if selected else C['text_dark'],
+            highlightbackground=C['accent_ring'] if selected else C['card_border'],
+        )
+
+    def _build_orientation_profile_section(self, parent):
+        profile_card, profile_content = make_card(parent, padx=24, pady=22)
+        profile_card.pack(fill=tk.X, pady=(0, 18))
+
+        groups = tk.Frame(profile_content, bg=C['card_bg'])
+        groups.pack(fill=tk.X)
+        groups.grid_columnconfigure(0, weight=1, uniform='orientation_groups')
+        groups.grid_columnconfigure(1, weight=1, uniform='orientation_groups')
+
+        group1 = self._profile_group_card(
+            groups,
+            0,
+            0,
+            'Sở thích và định hướng',
+            'Xác định lĩnh vực quan tâm, mục tiêu và cách học phù hợp.',
+            icon='🎯',
+        )
+        self._profile_field(
+            group1,
+            'Sở thích chính',
+            self.profile_interest_display,
+            ['Công nghệ thông tin', 'Kỹ thuật', 'Kinh doanh', 'Marketing', 'Du lịch', 'Thực phẩm', 'Y tế', 'Giáo dục', 'Nghệ thuật', 'Chưa xác định'],
+            0,
+            0,
+        )
+        self._profile_field(
+            group1,
+            'Mục tiêu nghề nghiệp',
+            self.profile_career_goal,
+            ['Thu nhập cao', 'Dễ xin việc', 'Ổn định lâu dài', 'Làm việc quốc tế', 'Khởi nghiệp', 'Nghiên cứu khoa học', 'Phục vụ cộng đồng'],
+            0,
+            1,
+        )
+        self._profile_field(
+            group1,
+            'Phong cách học tập',
+            self.profile_learning_style,
+            ['Thực hành nhiều', 'Lý thuyết nghiên cứu', 'Học qua dự án', 'Học theo nhóm', 'Tự học'],
+            1,
+            0,
+        )
+
+        group2 = self._profile_group_card(
+            groups,
+            0,
+            1,
+            'Hồ sơ cá nhân',
+            'Bổ sung bối cảnh học tập, gia đình và môi trường làm việc.',
+            icon='👤',
+        )
+        self._profile_field(
+            group2,
+            'Môi trường sống',
+            self.profile_geography_display,
+            ['Đô thị lớn', 'Đô thị vừa', 'Nông thôn', 'Miền núi', 'Ven biển', 'Khu công nghiệp'],
+            0,
+            0,
+        )
+        self._profile_field(
+            group2,
+            'Điều kiện học tập',
+            self.profile_mobility_display,
+            ['Chỉ học gần nhà', 'Có thể học trong tỉnh', 'Có thể học tại TP.HCM hoặc Hà Nội', 'Sẵn sàng học xa nhà'],
+            0,
+            1,
+        )
+        self._profile_field(
+            group2,
+            'Nghề nghiệp gia đình',
+            self.profile_family_display,
+            ['Kinh doanh', 'Giáo viên', 'Công chức', 'Kỹ sư', 'Bác sĩ', 'Nông nghiệp', 'Thủy sản', 'Công nhân', 'Không xác định'],
+            1,
+            0,
+        )
+        self._profile_field(
+            group2,
+            'Môi trường làm việc',
+            self.profile_work_environment,
+            ['Văn phòng', 'Nhà máy', 'Phòng thí nghiệm', 'Trường học', 'Bệnh viện', 'Làm việc ngoài hiện trường', 'Làm việc từ xa'],
+            1,
+            1,
+        )
+
+        group3 = self._profile_group_card(
+            groups,
+            1,
+            0,
+            'Đặc điểm cá nhân',
+            'Chọn một hoặc nhiều đặc điểm nổi bật để AI hiểu rõ hơn phong cách học tập và làm việc của bạn.',
+            columnspan=2,
+            icon='✨',
+        )
+        chip_wrap = tk.Frame(group3, bg=C['card_bg'])
+        chip_wrap.grid(row=0, column=0, columnspan=2, sticky='ew')
+        for column in range(4):
+            chip_wrap.grid_columnconfigure(column, weight=1)
+        for index, trait in enumerate((
+            'Tư duy logic tốt',
+            'Thích sáng tạo',
+            'Giao tiếp tốt',
+            'Cẩn thận tỉ mỉ',
+            'Thích nghiên cứu',
+            'Thích làm việc nhóm',
+            'Có tố chất lãnh đạo',
+            'Thích hoạt động ngoài trời',
+        )):
+            self._profile_chip(chip_wrap, trait, index)
+
     def _build_profile_strip(self, parent):
         strip = tk.Frame(parent, bg=C['accent_soft'], padx=12, pady=9)
         strip.pack(fill=tk.X, pady=(0, 10))
@@ -1499,7 +1869,7 @@ class App(tk.Tk):
         content.grid_columnconfigure(1, weight=1)
         content.grid_columnconfigure(2, weight=1)
         intro = tk.Frame(content, bg=C['card_bg'])
-        intro.grid(row=0, column=0, columnspan=2, sticky='nsew', pady=(0, 22))
+        intro.grid(row=0, column=0, columnspan=3, sticky='nsew', pady=(0, 22))
         tk.Label(
             intro,
             text='🤖 HUIT Career Advisor AI',
@@ -1513,7 +1883,7 @@ class App(tk.Tk):
             bg=C['card_bg'],
             fg=C['text_muted'],
             font=F['label'],
-            wraplength=720,
+            wraplength=980,
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(8, 14))
         chips = tk.Frame(intro, bg=C['card_bg'])
@@ -1534,7 +1904,6 @@ class App(tk.Tk):
                 pady=5,
             ).pack(side=tk.LEFT, padx=(0, 8), pady=(0, 4))
         cta_box = tk.Frame(content, bg=C['card_bg'])
-        cta_box.grid(row=0, column=2, sticky='e', pady=(0, 22))
         IconButton(
             cta_box,
             '🚀 Bắt đầu phân tích',
@@ -1639,7 +2008,7 @@ class App(tk.Tk):
         self.ov_metric_thpt = tk.StringVar(value='—')
         self.ov_metric_fit = tk.StringVar(value='Chưa có')
         row = tk.Frame(parent, bg=C['content_bg'])
-        row.pack(fill=tk.X, pady=(0, 42))
+        row.pack(fill=tk.X, pady=(6, 18))
         for index in range(4):
             row.grid_columnconfigure(index, weight=1)
         self._build_metric_card(row, 'Điểm ĐGNL', self.ov_metric_dgnl, 'Thang 600–1200', 'accent', 0)
@@ -1758,7 +2127,7 @@ class App(tk.Tk):
             summary_lines = []
             for item in majors[:3]:
                 summary_lines.append(
-                    f"• {item.get('ten_nganh', 'Ngành phù hợp')}: {float(item.get('xac_suat', 0)):.0f}%"
+                    f"• {item.get('ten_nganh', 'Ngành phù hợp')}: phù hợp với hồ sơ"
                 )
             if has_ai_insight:
                 self.ov_ai_summary.set(
@@ -1779,7 +2148,7 @@ class App(tk.Tk):
                 item = majors[index]
                 probability = max(0, min(100, float(item.get('xac_suat', 0))))
                 title.configure(text=f"{index + 1}. {item.get('ten_nganh', '')}")
-                badge.configure(text=f'{probability:.0f}%')
+                badge.configure(text='Phù hợp')
                 wrap.update_idletasks()
                 width = max(1, int(wrap.winfo_width() * probability / 100))
                 bar.configure(width=width)
@@ -2005,19 +2374,19 @@ class App(tk.Tk):
         self.ov_thpt_scores = [tk.StringVar() for _ in range(3)]
         self.ov_direct_scores = [tk.StringVar() for _ in range(3)]
         self.ov_english = tk.StringVar()
-        self.ov_dhsp = tk.StringVar()
         self.ov_kv = tk.StringVar(value='KV3')
         self.ov_dt = tk.StringVar(value='Không ưu tiên')
 
-        self._build_overview_metrics(content)
-
         method_grid = tk.Frame(content, bg=C['content_bg'])
-        method_grid.pack(fill=tk.X, pady=(0, 32))
+        method_grid.pack(fill=tk.X, pady=(0, 8))
         for column in range(2):
             method_grid.grid_columnconfigure(column, weight=1, uniform='overview_methods')
+        for row in range(2):
+            method_grid.grid_rowconfigure(row, weight=1, uniform='overview_method_rows', minsize=268)
 
         card, panel = make_card(method_grid, padx=22, pady=18)
         card.grid(row=1, column=1, sticky='nsew', padx=(12, 0), pady=(0, 24))
+        card.set_fixed_height(268)
         self._method_card_header(
             panel,
             '🧠',
@@ -2025,11 +2394,22 @@ class App(tk.Tk):
             'Nhập tổng điểm ĐGNL theo thang 600-1200.',
             'accent',
         )
-        tk.Label(panel, text='Tổng điểm ĐGNL', bg=C['card_bg'], fg=C['text_dark'], font=F['label_b']).pack(anchor=tk.W, pady=(0, 6))
-        styled_entry(panel, self.ov_dgnl, 14).pack(anchor=tk.W)
+        dgnl_row = tk.Frame(panel, bg=C['card_bg'])
+        dgnl_row.pack(fill=tk.X, pady=(10, 0))
+        dgnl_row.grid_columnconfigure(0, weight=0)
+        dgnl_row.grid_columnconfigure(1, weight=1)
+        tk.Label(
+            dgnl_row,
+            text='Tổng điểm ĐGNL',
+            bg=C['card_bg'],
+            fg=C['text_dark'],
+            font=F['label_b'],
+        ).grid(row=0, column=0, sticky='w', padx=(0, 18))
+        styled_entry(dgnl_row, self.ov_dgnl, 16).grid(row=0, column=1, sticky='w')
 
         card, panel = make_card(method_grid, padx=22, pady=18)
         card.grid(row=0, column=0, sticky='nsew', padx=(0, 12), pady=(0, 24))
+        card.set_fixed_height(268)
         self._method_card_header(
             panel,
             '📚',
@@ -2041,6 +2421,7 @@ class App(tk.Tk):
 
         card, panel = make_card(method_grid, padx=22, pady=18)
         card.grid(row=0, column=1, sticky='nsew', padx=(12, 0), pady=(0, 24))
+        card.set_fixed_height(268)
         self._method_card_header(
             panel,
             '📝',
@@ -2052,6 +2433,7 @@ class App(tk.Tk):
 
         card, panel = make_card(method_grid, padx=22, pady=18)
         card.grid(row=1, column=0, sticky='nsew', padx=(0, 12), pady=(0, 24))
+        card.set_fixed_height(268)
         self._method_card_header(
             panel,
             '🎯',
@@ -2061,20 +2443,9 @@ class App(tk.Tk):
         )
         self._build_direct_score_card(panel)
 
-        card, panel = make_card(method_grid, padx=22, pady=18)
-        card.grid(row=2, column=0, sticky='nsew', padx=(0, 12))
-        self._method_card_header(
-            panel,
-            '⭐',
-            'Đánh giá năng lực chuyên biệt ĐHSP',
-            'Ghi nhận điểm riêng để hoàn thiện hồ sơ, không ảnh hưởng mô hình hiện tại.',
-            'accent',
-        )
-        tk.Label(panel, text='Điểm ĐGNL chuyên biệt', bg=C['card_bg'], fg=C['text_dark'], font=F['label_b']).pack(anchor=tk.W, pady=(0, 6))
-        styled_entry(panel, self.ov_dhsp, 14).pack(anchor=tk.W)
-
-        card, panel = make_card(method_grid, padx=22, pady=18)
-        card.grid(row=2, column=1, sticky='nsew', padx=(12, 0))
+        priority_card, panel = make_card(content, padx=22, pady=18)
+        priority_card.pack(fill=tk.X, pady=(0, 24))
+        priority_card.set_fixed_height(252)
         self._method_card_header(
             panel,
             '⚙',
@@ -2083,40 +2454,20 @@ class App(tk.Tk):
             'warning',
         )
         prefs = tk.Frame(panel, bg=C['card_bg'])
-        prefs.pack(fill=tk.X)
+        prefs.pack(fill=tk.X, pady=(8, 28))
         for column in range(2):
             prefs.grid_columnconfigure(column, weight=1)
         tk.Label(prefs, text='Khu vực', bg=C['card_bg'], fg=C['text_dark'], font=F['label_b']).grid(row=0, column=0, sticky='w', pady=(0, 6))
-        styled_combo(prefs, self.ov_kv, ['KV1', 'KV2-NT', 'KV2', 'KV3'], width=13).grid(row=1, column=0, sticky='w')
+        styled_combo(prefs, self.ov_kv, ['KV1', 'KV2-NT', 'KV2', 'KV3'], width=22).grid(row=1, column=0, sticky='ew', padx=(0, 22), pady=(0, 18))
         tk.Label(prefs, text='Đối tượng', bg=C['card_bg'], fg=C['text_dark'], font=F['label_b']).grid(row=0, column=1, sticky='w', pady=(0, 6))
         styled_combo(
             prefs,
             self.ov_dt,
             ['Nhóm 1 (01-04)', 'Nhóm 2 (05-07)', 'Không ưu tiên'],
             width=22,
-        ).grid(row=1, column=1, sticky='w')
+        ).grid(row=1, column=1, sticky='ew', padx=(22, 0), pady=(0, 18))
 
-        profile_card, profile_content = make_card(
-            content,
-            'Yếu tố hỗ trợ định hướng',
-            padx=20,
-            pady=14,
-        )
-        profile_card.pack(fill=tk.X, pady=(0, 10))
-        next_row = self._build_profile_fields(profile_content)
-        tk.Label(
-            profile_content,
-            text=(
-                "Ngoài học lực và điểm số, hệ thống còn xem xét các yếu tố như sở thích cá nhân, truyền thống\n"
-                "nghề nghiệp của gia đình, điều kiện địa lý nơi sinh sống, môi trường kinh tế địa phương và một số\n"
-                "đặc điểm cá nhân để đưa ra gợi ý ngành học phù hợp hơn. Các yếu tố này chỉ mang tính hỗ trợ\n"
-                "tham khảo nhằm tăng độ chính xác của việc tư vấn hướng nghiệp."
-            ),
-            bg=C['card_bg'],
-            fg=C['text_muted'],
-            font=F['small'],
-            justify=tk.LEFT,
-        ).grid(row=next_row, column=0, columnspan=4, sticky='w', pady=(8, 0))
+        self._build_orientation_profile_section(content)
 
         action_row = tk.Frame(content, bg=C['content_bg'])
         action_row.pack(fill=tk.X, pady=(2, 10))
@@ -2136,8 +2487,7 @@ class App(tk.Tk):
             width=110,
         ).pack(side=tk.LEFT, padx=(10, 0))
 
-        self._build_ai_insight_dashboard(content)
-        self._build_top_major_dashboard(content)
+        self._build_overview_metrics(content)
 
         method_card, method_content = make_card(
             content,
@@ -2341,8 +2691,6 @@ class App(tk.Tk):
         ):
             variable.set('')
         self.ov_english.set('')
-        if hasattr(self, 'ov_dhsp'):
-            self.ov_dhsp.set('')
         self._tbl_methods.populate([])
         self._tbl_overview.show_empty()
         self._overview_major_results = []
@@ -2490,8 +2838,12 @@ class App(tk.Tk):
             dut = round(((1200 - s) / 300) * dut, 2)
         self._dSumVal.config(text=f'{s:.0f} / 1200')
         self._dXTVal.config(text=f'{s + dut:.1f} / 1200')
-        self._dUTInfo.config(
-            text=f'  + {dut} điểm ưu tiên (quy định mới)' if dut > 0 else '')
+        notes = []
+        if abs(s - 600) < 0.001:
+            notes.append('Điểm đang ở ngưỡng sàn 600, nên cân nhắc thêm phương thức xét tuyển khác.')
+        if dut > 0:
+            notes.append(f'+ {dut} điểm ưu tiên (quy định mới)')
+        self._dUTInfo.config(text='  ' + ' | '.join(notes) if notes else '')
 
     def _clear_dgnl(self):
         self.dgnl_total.set('')
@@ -2550,7 +2902,10 @@ class App(tk.Tk):
                                thu_tu_nv=1, nguyen_vong=group, top_n=12)
         results = enrich_major_results(results, self._current_profile())
         self._tbl_dgnl.populate(results)
-        self._set_status(f'Đã gợi ý {len(results)} ngành phù hợp (ĐGNL)')
+        if abs(diem - 600) < 0.001:
+            self._set_status('ĐGNL ở ngưỡng sàn 600, nên đối chiếu thêm Học bạ hoặc THPT QG')
+        else:
+            self._set_status(f'Đã gợi ý {len(results)} ngành phù hợp (ĐGNL)')
 
     # ══════════════════════════════════════════════════════════════════════
     #  PAGE – HỌC BẠ
@@ -2720,8 +3075,8 @@ class App(tk.Tk):
         self.tt_l10 = tk.StringVar(); self.tt_l11 = tk.StringVar(); self.tt_l12 = tk.StringVar()
         grade_fields = [
             ('ĐTB Lớp 10 (0–10):', self.tt_l10, 2, 0),
-            ('ĐTB Lớp 11 (0–11):', self.tt_l11, 2, 2),
-            ('ĐTB Lớp 12 (0–12):', self.tt_l12, 3, 0),
+            ('ĐTB Lớp 11 (0–10):', self.tt_l11, 2, 2),
+            ('ĐTB Lớp 12 (0–10):', self.tt_l12, 3, 0),
         ]
         for lbl, var, row, col in grade_fields:
             label_row(c_in, lbl, row, col=col)
@@ -2773,15 +3128,31 @@ class App(tk.Tk):
             messagebox.showwarning('Thiếu thông tin', 'Vui lòng chọn nhóm ngành.')
             return
         try:
-            tb30 = float(self.tt_l10.get() or 0) + float(self.tt_l11.get() or 0) + float(self.tt_l12.get() or 0)
-            if tb30 <= 0: raise ValueError
+            year_scores = [
+                float(self.tt_l10.get() or 0),
+                float(self.tt_l11.get() or 0),
+                float(self.tt_l12.get() or 0),
+            ]
+            if not all(0 <= score <= 10 for score in year_scores):
+                messagebox.showwarning(
+                    'Giá trị không hợp lệ',
+                    'Điểm trung bình từng năm phải nằm trong khoảng 0–10.',
+                )
+                return
+            tb30 = sum(year_scores)
+            if tb30 <= 0:
+                raise ValueError
         except Exception:
             messagebox.showwarning('Giá trị không hợp lệ', 'Vui lòng nhập điểm trung bình các năm.')
             return
         try:
             diem_anh = float(self.tt_anh.get()) if self.tt_anh.get() else 0.0
         except Exception:
-            diem_anh = 0.0
+            messagebox.showwarning('Giá trị không hợp lệ', 'Điểm Tiếng Anh phải là số từ 0 đến 10.')
+            return
+        if not 0 <= diem_anh <= 10:
+            messagebox.showwarning('Giá trị không hợp lệ', 'Điểm Tiếng Anh phải nằm trong khoảng 0–10.')
+            return
         self._set_status('Đang xử lý Tuyển thẳng…')
         self._tbl_tt.show_loading()
         self.update_idletasks()
@@ -2922,59 +3293,99 @@ class App(tk.Tk):
     def _build_page_chat(self):
         page = tk.Frame(self._content_host, bg=C['content_bg'])
         self._pages['Trợ lý AI'] = page
-        self._build_method_page_hero(
-            page,
-            '🤖',
-            'Trợ lý AI Hướng nghiệp HUIT',
-            'Trao đổi trực tiếp với AI để phân tích học lực, sở thích và định hướng ngành học phù hợp.',
-            ('Chat tư vấn', 'Gợi ý ngành', 'So sánh phương thức', 'Hồ sơ cá nhân'),
-            'Bắt đầu chat',
-            lambda: self.chat_input_entry.focus_set() if hasattr(self, 'chat_input_entry') else None,
-        )
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(0, weight=1)
 
-        chat_card, chat_content = make_card(page, padx=14, pady=14)
-        chat_card.pack(fill=tk.BOTH, expand=True)
-        self._method_card_header(
-            chat_content,
-            '🤖',
-            'Cuộc trò chuyện hướng nghiệp',
-            'AI sẽ hỏi từng bước để thu thập thông tin và đưa ra tư vấn cá nhân hóa.',
-            'ai_accent',
-        )
+        chat_shell = tk.Frame(page, bg=C['card_bg'])
+        chat_shell.grid(row=0, column=0, sticky='nsew')
+        chat_shell.grid_columnconfigure(0, weight=1)
+        chat_shell.grid_rowconfigure(0, weight=1)
 
-        from tkinter.scrolledtext import ScrolledText
-        self.chat_log = ScrolledText(
-            chat_content,
+        chat_content = tk.Frame(chat_shell, bg=C['card_bg'], padx=22, pady=18)
+        chat_content.grid(row=0, column=0, sticky='nsew')
+        chat_content.grid_columnconfigure(0, weight=1)
+        chat_content.grid_rowconfigure(1, weight=1)
+
+        def _sync_chat_content_width(event):
+            chat_content.grid_columnconfigure(0, minsize=max(1, event.width))
+
+        chat_content.bind('<Configure>', _sync_chat_content_width)
+
+        chat_header = tk.Frame(chat_content, bg=C['card_bg'])
+        chat_header.grid(row=0, column=0, sticky='ew', pady=(0, 14))
+        tk.Label(
+            chat_header,
+            text='🤖',
+            bg=C['accent_soft'],
+            fg=C['accent'],
+            font=('Segoe UI Emoji', 20),
+            width=3,
+        ).pack(side=tk.LEFT, padx=(0, 12), ipady=6)
+        header_text = tk.Frame(chat_header, bg=C['card_bg'])
+        header_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(
+            header_text,
+            text='Trợ lý AI Hướng nghiệp HUIT',
+            bg=C['card_bg'],
+            fg=C['ai_accent'],
+            font=F['hero_title'],
+        ).pack(anchor=tk.W)
+        tk.Label(
+            header_text,
+            text='Trao đổi trực tiếp để phân tích hồ sơ, so sánh phương thức và gợi ý ngành học phù hợp.',
+            bg=C['card_bg'],
+            fg=C['text_muted'],
+            font=F['small'],
+        ).pack(anchor=tk.W, pady=(2, 0))
+        log_frame = tk.Frame(chat_content, bg=C['surface_alt'])
+        log_frame.grid(row=1, column=0, sticky='nsew', pady=(0, 14))
+        log_frame.grid_columnconfigure(0, weight=1)
+        log_frame.grid_rowconfigure(0, weight=1)
+        self.chat_log = tk.Text(
+            log_frame,
             wrap=tk.WORD,
+            height=12,
             font=F['result'],
-            bg=C['input_bg'],
+            bg=C['surface_alt'],
             fg=C['text_dark'],
             bd=0,
             highlightthickness=0,
             insertbackground=C['accent'],
             selectbackground=C['accent_soft'],
             selectforeground=C['text_dark'],
-            padx=16,
-            pady=16,
+            padx=24,
+            pady=20,
         )
-        self.chat_log.pack(fill=tk.BOTH, expand=True, pady=(0, 16))
+        self.chat_log.grid(row=0, column=0, sticky='nsew')
+        chat_scroll = ttk.Scrollbar(log_frame, orient='vertical', command=self.chat_log.yview, style='Modern.Vertical.TScrollbar')
+        chat_scroll.grid(row=0, column=1, sticky='ns')
+        self.chat_log.configure(yscrollcommand=chat_scroll.set)
         self.chat_log.configure(state='disabled')
 
         self._style_chat_widgets()
 
-        input_frame = tk.Frame(chat_content, bg=C['card_bg'])
-        input_frame.pack(fill=tk.X)
+        input_frame = tk.Frame(chat_content, bg=C['surface_alt'], padx=14, pady=12)
+        input_frame.grid(row=2, column=0, sticky='ew')
+        input_frame.grid_columnconfigure(0, weight=1)
 
         self.chat_input_var = tk.StringVar()
         self.chat_input_entry = styled_entry(input_frame, self.chat_input_var, width=50)
-        self.chat_input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        self.chat_input_entry.grid(row=0, column=0, sticky='ew', padx=(0, 10))
         self.chat_input_entry.bind('<Return>', lambda _event: self._send_chat_message())
 
-        IconButton(input_frame, 'Gửi', self._send_chat_message, width=96).pack(side=tk.LEFT)
-        IconButton(input_frame, 'Làm mới', self._reset_chat, bg=C['secondary'], fg=C['text_dark'], hover=C['secondary_hover'], width=112).pack(side=tk.LEFT, padx=(10, 0))
+        IconButton(input_frame, 'Gửi', self._send_chat_message, width=96).grid(row=0, column=1)
+        IconButton(input_frame, 'Làm mới', self._reset_chat, bg=C['secondary'], fg=C['text_dark'], hover=C['secondary_hover'], width=112).grid(row=0, column=2, padx=(10, 0))
+        self.chat_busy_var = tk.StringVar(value='')
+        tk.Label(
+            input_frame,
+            textvariable=self.chat_busy_var,
+            bg=C['surface_alt'],
+            fg=C['ai_accent'],
+            font=F['small_medium'],
+        ).grid(row=1, column=0, columnspan=3, sticky='w', pady=(8, 0))
 
-        quick_frame = tk.Frame(chat_content, bg=C['card_bg'])
-        quick_frame.pack(fill=tk.X, pady=(10, 0))
+        quick_frame = tk.Frame(input_frame, bg=C['surface_alt'])
+        quick_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=(12, 0))
 
         prompts = [
             ("Tư vấn ngành cho tôi", "Tôi muốn tư vấn ngành học phù hợp nhất"),
@@ -2987,7 +3398,7 @@ class App(tk.Tk):
             btn = tk.Label(
                 quick_frame,
                 text=text,
-                bg=C['surface_alt'],
+                bg=C['secondary'],
                 fg=C['accent'],
                 font=F['small_medium'],
                 padx=11,
@@ -3001,7 +3412,7 @@ class App(tk.Tk):
             def on_enter(event, b=btn):
                 b.configure(bg=C['accent_soft'])
             def on_leave(event, b=btn):
-                b.configure(bg=C['surface_alt'])
+                b.configure(bg=C['secondary'])
             btn.bind('<Enter>', on_enter)
             btn.bind('<Leave>', on_leave)
 
@@ -3040,10 +3451,22 @@ class App(tk.Tk):
         if not text:
             return
         self.chat_input_var.set("")
-        self._process_message(text)
+        self._process_chat_with_loading(text)
 
     def _send_quick_prompt(self, text):
-        self._process_message(text)
+        self._process_chat_with_loading(text)
+
+    def _process_chat_with_loading(self, text):
+        if hasattr(self, 'chat_busy_var'):
+            self.chat_busy_var.set('AI đang phân tích câu trả lời...')
+            self._set_status('Trợ lý AI đang xử lý...')
+            self.update_idletasks()
+        try:
+            self._process_message(text)
+        finally:
+            if hasattr(self, 'chat_busy_var'):
+                self.chat_busy_var.set('')
+                self._set_status('Trợ lý AI sẵn sàng')
 
     def _process_message(self, text):
         self._append_to_chat_log(self.student_name or "Học sinh", text, is_ai=False)
@@ -3211,11 +3634,10 @@ class App(tk.Tk):
 
         card_text += f"\n🎯 TOP 3 NGÀNH ĐỀ XUẤT PHÙ HỢP NHẤT:\n"
         for idx, r in enumerate(results[:3], 1):
-            suitability = f"{r.get('xac_suat', 50):.1f}%"
             reasons = ", ".join(r.get('ly_do_ho_tro', []))
             reasons_str = f" ({reasons})" if reasons else ""
             card_text += f"   {idx}. {r.get('ten_nganh')} - Mã ngành: {r.get('ma_nganh')}\n"
-            card_text += f"      Độ phù hợp: {suitability}{reasons_str}\n"
+            card_text += f"      Đánh giá: phù hợp với hồ sơ{reasons_str}\n"
 
         card_text += f"──────────────────────────────────────────────────\n"
         card_text += f"💡 Lời khuyên: Bạn có độ phù hợp cao tại nhóm ngành {interest}. Hãy đăng ký xét tuyển sớm bằng phương thức {best_method} để tăng tối đa cơ hội trúng tuyển HUIT!"

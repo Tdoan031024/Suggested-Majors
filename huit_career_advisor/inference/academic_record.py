@@ -65,8 +65,13 @@ class HocBaAnalyzer:
         
         p_kv = map_kv.get(khu_vuc, 0)
         p_dt = map_dt.get(doi_tuong, 0)
+        try:
+            p_kk = float(diem_khuyen_khich or 0)
+        except (TypeError, ValueError):
+            p_kk = 0
+        p_kk = max(0.0, min(1.5, p_kk))
             
-        total = p_kv + p_dt
+        total = p_kv + p_dt + p_kk
         return min(3.0, total)
     
     def tinh_diem_hoc_ba(self, to_hop, diem_5_hk):
@@ -92,7 +97,13 @@ class HocBaAnalyzer:
         diem_tb_mon = {}
         for i, mon in enumerate(['mon1', 'mon2', 'mon3'], 1):
             if mon in diem_5_hk:
-                tb_mon = sum(diem_5_hk[mon]) / 5
+                try:
+                    scores = [float(x) for x in diem_5_hk[mon]]
+                except (TypeError, ValueError):
+                    return None
+                if len(scores) != 5 or not all(0 <= x <= 10 for x in scores):
+                    return None
+                tb_mon = sum(scores) / 5
                 diem_tb_mon[f'mon{i}'] = round(tb_mon, 2)
             else:
                 return None
@@ -117,14 +128,24 @@ class HocBaAnalyzer:
                 return []
         
         try:
-            # Lấy điểm cuối (đã cộng ưu tiên nếu có)
-            diem_final = diem_hb_info.get('diem_xet_tuyen', diem_hb_info['diem_hb'])
+            mon_scores = [
+                float(diem_hb_info['diem_tb_mon1']),
+                float(diem_hb_info['diem_tb_mon2']),
+                float(diem_hb_info['diem_tb_mon3']),
+            ]
+            if not all(0 <= x <= 10 for x in mon_scores):
+                return [{'ma_nganh': None, 'ten_nganh': 'Điểm học bạ không hợp lệ', 'xac_suat': 0.0}]
+
+            diem_hb = float(diem_hb_info['diem_hb'])
+            diem_final = float(diem_hb_info.get('diem_xet_tuyen', diem_hb))
+            if not (0 <= diem_hb <= 30) or not (0 <= diem_final <= 33):
+                return [{'ma_nganh': None, 'ten_nganh': 'Điểm học bạ không hợp lệ', 'xac_suat': 0.0}]
             
             # Chuẩn bị features
             features = [
-                diem_hb_info['diem_tb_mon1'],
-                diem_hb_info['diem_tb_mon2'],
-                diem_hb_info['diem_tb_mon3'],
+                mon_scores[0],
+                mon_scores[1],
+                mon_scores[2],
                 diem_final,  # Sử dụng điểm đã cộng ưu tiên
                 2024  # Năm hiện tại
             ]
@@ -161,10 +182,11 @@ class HocBaAnalyzer:
                                     if nganh_code in majors:
                                         preferred = True
                                         break
-                    if preferred:
-                        boost *= 1.8
-                    else:
-                        boost *= 0.6
+                    if nguyen_vong:
+                        if preferred:
+                            boost *= 1.8
+                        else:
+                            boost *= 0.6
                     # Tổ hợp phù hợp/phạt mạnh
                     to_hop_phu_hop = diem_hb_info['to_hop'] in nganh_info['to_hop']
                     if to_hop_phu_hop:

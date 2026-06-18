@@ -63,6 +63,11 @@ def goi_y_nganh_tuyen_thang_simple(tb_tong: float, diem_anh: float = 0.0, nguyen
     Returns: list[dict] with keys: ma_nganh, ten_nganh, xac_suat
     """
     try:
+        tb_tong = float(tb_tong)
+        diem_anh = float(diem_anh or 0.0)
+        if tb_tong <= 0 or tb_tong > 30 or diem_anh < 0 or diem_anh > 10:
+            return [{'ma_nganh': None, 'ten_nganh': 'Điểm không hợp lệ', 'xac_suat': 0.0}]
+
         # Ưu tiên dùng mô hình RF+NB nếu có
         model = _load_tt_model()
         mapping = _group_mapping_codes()
