@@ -13,6 +13,7 @@ from typing import Optional, List, Dict
 from huit_career_advisor.domain.catalog import (
     NGANH_TO_HOP,
     THPT_GROUP_MAPPING,
+    resolve_group_key,
 )
 from huit_career_advisor.paths import model_path
 
@@ -28,17 +29,7 @@ def get_group_mapping_codes() -> Dict[str, List[str]]:
     return _group_mapping_codes()
 
 def _resolve_group_key(user_input: Optional[str]) -> Optional[str]:
-    if not user_input:
-        return None
-    m = _group_mapping_codes()
-    if user_input in m:
-        return user_input
-    ui = user_input.lower()
-    for k in m:
-        kl = k.lower()
-        if ui in kl or kl in ui:
-            return k
-    return None
+    return resolve_group_key(user_input, _group_mapping_codes())
 
 def allowed_tohops_for_group(user_input: Optional[str]) -> set:
     """Return set of tổ hợp codes available in all majors of the selected group."""

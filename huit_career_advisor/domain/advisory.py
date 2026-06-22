@@ -116,7 +116,19 @@ def _personality_groups(value: str) -> set[str]:
             "Hóa học – Sinh học – Môi trường – Vật liệu",
         },
     }
-    return mapping.get(value, set())
+    # Thử khớp chính xác trước
+    if value in mapping:
+        return mapping[value]
+    
+    # Khớp từ khóa bán cấu trúc (nếu người dùng tự nhập)
+    val_lower = str(value or "").lower()
+    matched = set()
+    for key, majors in mapping.items():
+        key_clean = key.lower().replace("-", " ")
+        words = [w.strip() for w in key_clean.split() if w.strip()]
+        if any(w in val_lower for w in words if len(w) > 2):
+            matched.update(majors)
+    return matched
 
 
 def profile_adjustment(major_code: str, profile: AdvisoryProfile):

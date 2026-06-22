@@ -40,6 +40,15 @@ def goi_y_nganh_simple(diem_dgnl, diem_dt=0, diem_kv=3, thu_tu_nv=1, nguyen_vong
         if not (600 <= diem_dgnl <= 1200):
             return [{'ma_nganh': 'Error', 'ten_nganh': 'Điểm DGNL không hợp lệ', 'xac_suat': 0}]
         
+        diem_tong_norm = (diem_dgnl - 600) / (1200 - 600)
+        ty_le = 15.0
+        year = 2023
+        
+        fv = np.array([[diem_tong_norm, thu_tu_nv, diem_kv, diem_dt, ty_le, year]])
+        
+        rf_probs = rf_model.predict_proba(fv)[0]
+        nb_probs = nb_model.predict_proba(fv)[0]
+        
         results = []
         
         nguyen_vong_map = DGNL_GROUP_MAPPING
@@ -56,15 +65,8 @@ def goi_y_nganh_simple(diem_dgnl, diem_dt=0, diem_kv=3, thu_tu_nv=1, nguyen_vong
                 else:
                     ma_nganh_encoded = 0
                 
-                # Features
-                diem_tong_norm = (diem_dgnl - 600) / (1200 - 600)
-                ty_le = 15.0
-                year = 2023
-                
-                fv = np.array([[diem_tong_norm, thu_tu_nv, diem_kv, diem_dt, ty_le, ma_nganh_encoded, year]])
-                
-                rf_p = rf_model.predict_proba(fv)[0][ma_nganh_encoded]
-                nb_p = nb_model.predict_proba(fv)[0][ma_nganh_encoded]
+                rf_p = rf_probs[ma_nganh_encoded]
+                nb_p = nb_probs[ma_nganh_encoded]
                 
                 prob = (0.7 * rf_p + 0.3 * nb_p) * 100
                 

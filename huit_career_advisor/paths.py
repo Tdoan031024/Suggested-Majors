@@ -9,6 +9,8 @@ from pathlib import Path
 def project_root() -> Path:
     """Return the project root or the PyInstaller executable directory."""
     if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS)
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 

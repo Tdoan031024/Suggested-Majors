@@ -1,5 +1,30 @@
 """Canonical HUIT major and admission-combination catalog."""
 
+
+def normalize_group_name(value: str) -> str:
+    """Normalize display variants of a major-group name for matching."""
+    text = str(value or "")
+    text = text.replace("–", "-").replace("—", "-").replace("−", "-")
+    return " ".join(text.split()).casefold()
+
+
+def resolve_group_key(value: str, mapping: dict) -> str | None:
+    """Resolve aliases and dash variants to a canonical mapping key."""
+    normalized = normalize_group_name(value)
+    if not normalized:
+        return None
+
+    for key in mapping:
+        if normalize_group_name(key) == normalized:
+            return key
+
+    matches = [
+        key for key in mapping
+        if normalized in normalize_group_name(key)
+        or normalize_group_name(key) in normalized
+    ]
+    return max(matches, key=lambda key: len(normalize_group_name(key))) if matches else None
+
 MAJOR_ADMISSION_COMBINATIONS = {
     "7810103": {"ten_nganh": "Quản trị dịch vụ du lịch và lữ hành", "to_hop": ["D01", "C03", "D15", "C00"]},
     "7810201": {"ten_nganh": "Quản trị khách sạn", "to_hop": ["D01", "C03", "D15", "C00"]},

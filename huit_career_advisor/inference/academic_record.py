@@ -13,6 +13,7 @@ from huit_career_advisor.domain.catalog import (
     ACADEMIC_RECORD_GROUP_MAPPING,
     NGANH_TO_HOP,
     TO_HOP_MON,
+    resolve_group_key,
 )
 
 warnings.filterwarnings('ignore')
@@ -164,6 +165,7 @@ class HocBaAnalyzer:
             results = []
             
             NGUYEN_VONG_MAP = ACADEMIC_RECORD_GROUP_MAPPING
+            preferred_group = resolve_group_key(nguyen_vong, NGUYEN_VONG_MAP)
             
             for i, prob in enumerate(ensemble_proba):
                 nganh_code = nganh_codes[i]
@@ -173,15 +175,8 @@ class HocBaAnalyzer:
                     # BOOST MẠNH như DGNL
                     boost = 1.0
                     preferred = False
-                    if nguyen_vong:
-                        if nguyen_vong in NGUYEN_VONG_MAP:
-                            preferred = nganh_code in NGUYEN_VONG_MAP[nguyen_vong]
-                        else:
-                            for group, majors in NGUYEN_VONG_MAP.items():
-                                if nguyen_vong.lower() in group.lower() or group.lower() in nguyen_vong.lower():
-                                    if nganh_code in majors:
-                                        preferred = True
-                                        break
+                    if preferred_group:
+                        preferred = nganh_code in NGUYEN_VONG_MAP[preferred_group]
                     if nguyen_vong:
                         if preferred:
                             boost *= 1.8

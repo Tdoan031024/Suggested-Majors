@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 from pathlib import Path
+import threading
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
@@ -142,9 +143,15 @@ class RoundedCard(tk.Frame):
         self._redraw()
 
     def set_fixed_height(self, height):
-        self._fixed_height = height
-        self.configure(height=height)
-        self._canvas.configure(height=height)
+        try:
+            # Tự động điều chỉnh kích thước theo tỉ lệ DPI của màn hình
+            scaling = self.winfo_fpixels('1i') / 96.0
+            scaled_height = int(height * scaling)
+        except Exception:
+            scaled_height = height
+        self._fixed_height = scaled_height
+        self.configure(height=scaled_height)
+        self._canvas.configure(height=scaled_height)
         self._redraw()
 
     def _redraw(self, event=None):
@@ -685,12 +692,152 @@ class ScrollablePage(tk.Frame):
 #  MAIN APPLICATION
 # ══════════════════════════════════════════════════════════════════════════
 
+
+# ── Windows Credential Manager Helpers ─────────────────────────────────────
+def _win_save_api_key(api_key):
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        class CREDENTIAL_ATTRIBUTE(ctypes.Structure):
+            _fields_ = [
+                ('Keyword', wintypes.LPWSTR),
+                ('Flags', wintypes.DWORD),
+                ('ValueSize', wintypes.DWORD),
+                ('Value', ctypes.POINTER(ctypes.c_byte))
+            ]
+
+        class CREDENTIAL(ctypes.Structure):
+            _fields_ = [
+                ('Flags', wintypes.DWORD),
+                ('Type', wintypes.DWORD),
+                ('TargetName', wintypes.LPWSTR),
+                ('Comment', wintypes.LPWSTR),
+                ('LastWritten', wintypes.FILETIME),
+                ('CredentialBlobSize', wintypes.DWORD),
+                ('CredentialBlob', ctypes.POINTER(ctypes.c_byte)),
+                ('Persist', wintypes.DWORD),
+                ('AttributeCount', wintypes.DWORD),
+                ('Attributes', ctypes.POINTER(CREDENTIAL_ATTRIBUTE)),
+                ('TargetAlias', wintypes.LPWSTR),
+                ('UserName', wintypes.LPWSTR)
+            ]
+
+        target = "HUIT_Career_Advisor_Gemini_Key"
+        blob = api_key.encode('utf-16le')
+        blob_len = len(blob)
+        
+        blob_type = ctypes.c_byte * blob_len
+        blob_data = blob_type.from_buffer_copy(blob)
+        
+        cred = CREDENTIAL()
+        cred.Flags = 0
+        cred.Type = 1 # CRED_TYPE_GENERIC
+        cred.TargetName = target
+        cred.Comment = "Gemini API Key for HUIT Career Advisor"
+        cred.Persist = 2 # CRED_PERSIST_LOCAL_MACHINE
+        cred.CredentialBlobSize = blob_len
+        cred.CredentialBlob = ctypes.cast(blob_data, ctypes.POINTER(ctypes.c_byte))
+        cred.UserName = "HUIT_AI_User"
+        
+        advapi32 = ctypes.windll.advapi32
+        advapi32.CredWriteW.argtypes = [ctypes.POINTER(CREDENTIAL), wintypes.DWORD]
+        advapi32.CredWriteW.restype = wintypes.BOOL
+        
+        res = advapi32.CredWriteW(ctypes.byref(cred), 0)
+        return bool(res)
+    except Exception as e:
+        print(f"Error saving API key to Windows Credential Store: {e}")
+        return False
+
+def _win_load_api_key():
+    if sys.platform != 'win32':
+        return ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        class CREDENTIAL_ATTRIBUTE(ctypes.Structure):
+            _fields_ = [
+                ('Keyword', wintypes.LPWSTR),
+                ('Flags', wintypes.DWORD),
+                ('ValueSize', wintypes.DWORD),
+                ('Value', ctypes.POINTER(ctypes.c_byte))
+            ]
+
+        class CREDENTIAL(ctypes.Structure):
+            _fields_ = [
+                ('Flags', wintypes.DWORD),
+                ('Type', wintypes.DWORD),
+                ('TargetName', wintypes.LPWSTR),
+                ('Comment', wintypes.LPWSTR),
+                ('LastWritten', wintypes.FILETIME),
+                ('CredentialBlobSize', wintypes.DWORD),
+                ('CredentialBlob', ctypes.POINTER(ctypes.c_byte)),
+                ('Persist', wintypes.DWORD),
+                ('AttributeCount', wintypes.DWORD),
+                ('Attributes', ctypes.POINTER(CREDENTIAL_ATTRIBUTE)),
+                ('TargetAlias', wintypes.LPWSTR),
+                ('UserName', wintypes.LPWSTR)
+            ]
+
+        target = "HUIT_Career_Advisor_Gemini_Key"
+        advapi32 = ctypes.windll.advapi32
+        
+        advapi32.CredReadW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.POINTER(CREDENTIAL))]
+        advapi32.CredReadW.restype = wintypes.BOOL
+        advapi32.CredFree.argtypes = [ctypes.c_void_p]
+        advapi32.CredFree.restype = None
+        
+        cred_ptr = ctypes.POINTER(CREDENTIAL)()
+        res = advapi32.CredReadW(target, 1, 0, ctypes.byref(cred_ptr))
+        if res and cred_ptr:
+            cred = cred_ptr.contents
+            blob_size = cred.CredentialBlobSize
+            blob_ptr = ctypes.cast(cred.CredentialBlob, ctypes.POINTER(ctypes.c_char))
+            blob_bytes = ctypes.string_at(blob_ptr, blob_size)
+            api_key = blob_bytes.decode('utf-16le')
+            advapi32.CredFree(cred_ptr)
+            return api_key
+    except Exception as e:
+        print(f"Error loading API key from Windows Credential Store: {e}")
+    return ""
+
+def _win_delete_api_key():
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        advapi32 = ctypes.windll.advapi32
+        advapi32.CredDeleteW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD]
+        advapi32.CredDeleteW.restype = wintypes.BOOL
+        res = advapi32.CredDeleteW("HUIT_Career_Advisor_Gemini_Key", 1, 0)
+        return bool(res)
+    except Exception as e:
+        print(f"Error deleting API key from Windows Credential Store: {e}")
+        return False
+
+
 class App(tk.Tk):
 
     def __init__(self):
         if sys.platform == 'win32':
             try:
                 import ctypes
+                try:
+                    ctypes.windll.shcore.SetProcessDpiAwareness(2) # Per-Monitor DPI aware
+                except Exception:
+                    try:
+                        ctypes.windll.shcore.SetProcessDpiAwareness(1) # System DPI aware
+                    except Exception:
+                        try:
+                            ctypes.windll.user32.SetProcessDPIAware()
+                        except Exception:
+                            pass
+                
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                     'HUIT.CareerAdvisor.Desktop.v2'
                 )
@@ -740,6 +887,15 @@ class App(tk.Tk):
         )
 
     def _init_advisory_profile(self):
+        settings = self._load_settings()
+        init_key = ""
+        if sys.platform == 'win32' and settings.get('gemini_api_key_secured', False):
+            init_key = _win_load_api_key()
+        if not init_key:
+            init_key = settings.get('gemini_api_key', '')
+        self.gemini_api_key = tk.StringVar(value=init_key)
+        self.gemini_api_key.trace_add('write', lambda *_: self._update_api_key(self.gemini_api_key.get()))
+        self.gemini_consent_given = settings.get('gemini_consent_given', False)
         self.profile_interest = tk.StringVar(value=NONE_OPTION)
         self.profile_family = tk.StringVar(value=NONE_OPTION)
         self.profile_geography = tk.StringVar(value=GEOGRAPHY_OPTIONS[0])
@@ -775,6 +931,23 @@ class App(tk.Tk):
         self._sync_orientation_profile()
         self._update_profile_summary()
 
+    def _update_api_key(self, value):
+        val = value.strip()
+        if not val:
+            if sys.platform == 'win32':
+                _win_delete_api_key()
+                self._save_setting('gemini_api_key_secured', False)
+            self._save_setting('gemini_api_key', '')
+        else:
+            if sys.platform == 'win32':
+                success = _win_save_api_key(val)
+                if success:
+                    self._save_setting('gemini_api_key_secured', True)
+                    self._save_setting('gemini_api_key', '')
+                    return
+            self._save_setting('gemini_api_key', val)
+            self._save_setting('gemini_api_key_secured', False)
+
     def _current_profile(self):
         return AdvisoryProfile(
             interest_group=self.profile_interest.get(),
@@ -798,25 +971,34 @@ class App(tk.Tk):
         )
         return settings_dir / 'settings.json'
 
-    def _load_theme_preference(self):
+    def _load_settings(self):
         try:
-            data = json.loads(self._settings_path().read_text(encoding='utf-8'))
-            if data.get('theme') in ('light', 'dark'):
-                return data['theme']
-        except (OSError, ValueError, TypeError):
+            path = self._settings_path()
+            if path.exists():
+                return json.loads(path.read_text(encoding='utf-8'))
+        except Exception:
             pass
-        return 'light'
+        return {}
 
-    def _save_theme_preference(self):
+    def _save_setting(self, key, value):
         try:
+            settings = self._load_settings()
+            settings[key] = value
             path = self._settings_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
-                json.dumps({'theme': self._theme_name}, ensure_ascii=False),
+                json.dumps(settings, ensure_ascii=False, indent=4),
                 encoding='utf-8',
             )
-        except OSError:
+        except Exception:
             pass
+
+    def _load_theme_preference(self):
+        # Mặc định khởi động luôn sử dụng giao diện sáng
+        return 'light'
+
+    def _save_theme_preference(self):
+        self._save_setting('theme', self._theme_name)
 
     def _center_window(self):
         width = self.winfo_width()
@@ -906,6 +1088,7 @@ class App(tk.Tk):
         self._build_page_tuyenthang()
         self._build_page_pt1()
         self._build_page_chat()
+        self._build_page_settings()
 
     # ── Header ────────────────────────────────────────────────────────────
     def _build_header(self):
@@ -1438,6 +1621,10 @@ class App(tk.Tk):
         for pname, pframe in self._pages.items():
             if pname == name:
                 pframe.pack(fill=tk.BOTH, expand=True)
+                if name == 'Cài đặt' and hasattr(self, 'settings_consent_var'):
+                    self.settings_consent_var.set(
+                        'Đã đồng ý chia sẻ dữ liệu' if getattr(self, 'gemini_consent_given', False) else 'Chưa đồng ý (Sử dụng AI offline)'
+                    )
             else:
                 pframe.pack_forget()
         self._set_status(f'Đang sử dụng phương thức: {name}')
@@ -1473,20 +1660,21 @@ class App(tk.Tk):
     def _build_profile_fields(self, parent, start_row=0):
         group_values = [NONE_OPTION] + GROUP_OPTIONS
         fields = [
-            ('Sở thích cá nhân:', self.profile_interest, group_values, 0, 0, 34),
-            ('Nghề nghiệp gia đình:', self.profile_family, group_values, 0, 2, 34),
-            ('Nơi sinh sống:', self.profile_geography, GEOGRAPHY_OPTIONS, 1, 0, 24),
-            ('Kinh tế địa phương:', self.profile_economy, ECONOMY_OPTIONS, 1, 2, 27),
-            ('Đặc điểm cá nhân:', self.profile_personality, PERSONALITY_OPTIONS, 2, 0, 24),
-            ('Điều kiện học xa:', self.profile_mobility, MOBILITY_OPTIONS, 2, 2, 27),
+            ('Sở thích cá nhân:', self.profile_interest, group_values, 0, 0, 34, 'readonly'),
+            ('Nghề nghiệp gia đình:', self.profile_family, group_values, 0, 2, 34, 'readonly'),
+            ('Nơi sinh sống:', self.profile_geography, GEOGRAPHY_OPTIONS, 1, 0, 24, 'readonly'),
+            ('Kinh tế địa phương:', self.profile_economy, ECONOMY_OPTIONS, 1, 2, 27, 'readonly'),
+            ('Đặc điểm cá nhân:', self.profile_personality, PERSONALITY_OPTIONS, 2, 0, 24, 'normal'),
+            ('Điều kiện học xa:', self.profile_mobility, MOBILITY_OPTIONS, 2, 2, 27, 'readonly'),
         ]
-        for label, variable, values, row, column, width in fields:
+        for label, variable, values, row, column, width, state in fields:
             label_row(parent, label, start_row + row, col=column)
             styled_combo(
                 parent,
                 variable,
                 values,
                 width=width,
+                state=state,
             ).grid(
                 row=start_row + row,
                 column=column + 1,
@@ -2381,8 +2569,13 @@ class App(tk.Tk):
         method_grid.pack(fill=tk.X, pady=(0, 8))
         for column in range(2):
             method_grid.grid_columnconfigure(column, weight=1, uniform='overview_methods')
+        try:
+            scaling = self.winfo_fpixels('1i') / 96.0
+            row_minsize = int(268 * scaling)
+        except Exception:
+            row_minsize = 268
         for row in range(2):
-            method_grid.grid_rowconfigure(row, weight=1, uniform='overview_method_rows', minsize=268)
+            method_grid.grid_rowconfigure(row, weight=1, uniform='overview_method_rows', minsize=row_minsize)
 
         card, panel = make_card(method_grid, padx=22, pady=18)
         card.grid(row=1, column=1, sticky='nsew', padx=(12, 0), pady=(0, 24))
@@ -2485,6 +2678,15 @@ class App(tk.Tk):
             fg=C['text_dark'],
             hover=C['secondary_hover'],
             width=110,
+        ).pack(side=tk.LEFT, padx=(10, 0))
+        IconButton(
+            action_row,
+            'Xuất báo cáo HTML',
+            self._export_career_report,
+            bg=C['secondary'],
+            fg=C['text_dark'],
+            hover=C['secondary_hover'],
+            width=160,
         ).pack(side=tk.LEFT, padx=(10, 0))
 
         self._build_overview_metrics(content)
@@ -2681,6 +2883,339 @@ class App(tk.Tk):
         self._set_status(
             f'Hoàn tất đánh giá. Phương thức ưu tiên: {best}.'
         )
+
+    def _export_career_report(self):
+        scores = self._overview_input(show_errors=True)
+        if not scores:
+            return
+        
+        if not self._overview_major_results:
+            self._run_overview()
+            if not self._overview_major_results:
+                messagebox.showwarning(
+                    'Không có kết quả',
+                    'Không tìm thấy kết quả ngành học phù hợp để xuất báo cáo.',
+                )
+                return
+        
+        methods = rank_admission_methods(scores)
+        
+        import html
+        student_name = html.escape(getattr(self, 'student_name', '').strip() or 'Thí sinh hướng nghiệp')
+        kv = html.escape(self.ov_kv.get())
+        dt = html.escape(self.ov_dt.get())
+        sot_thich = html.escape(self.profile_interest.get())
+        dac_diem = html.escape(self.profile_personality.get())
+        vung_mien = html.escape(self.profile_geography.get())
+        
+        diem_details_html = ""
+        if scores['dgnl'] is not None:
+            diem_details_html += f"<li><strong>Điểm ĐGNL ĐHQG:</strong> {scores['dgnl']:.1f} điểm</li>"
+        if scores['hoc_ba']:
+            hb_tohop = self.ov_hb_tohop.get()
+            diem_details_html += f"<li><strong>Điểm Học bạ ({hb_tohop}):</strong> {sum(scores['hoc_ba']):.2f} điểm (môn lẻ: {', '.join(str(x) for x in scores['hoc_ba'])})</li>"
+        if scores['thpt']:
+            thpt_tohop = self.ov_thpt_tohop.get()
+            diem_details_html += f"<li><strong>Điểm thi THPT ({thpt_tohop}):</strong> {sum(scores['thpt']):.2f} điểm (môn lẻ: {', '.join(str(x) for x in scores['thpt'])})</li>"
+        if scores['tuyen_thang']:
+            diem_details_html += f"<li><strong>Điểm TB 3 năm (Tuyển thẳng):</strong> {sum(scores['tuyen_thang'])/3.0:.2f}/10 (môn lẻ: {', '.join(str(x) for x in scores['tuyen_thang'])})"
+            eng_val = self.ov_english.get().strip()
+            if eng_val:
+                diem_details_html += f" - Tiếng Anh: {eng_val}"
+            diem_details_html += "</li>"
+
+        methods_tbody = ""
+        for idx, m in enumerate(methods, 1):
+            badge_class = "badge-recommended" if m['recommended'] else ("badge-high" if m['level'] == 'Cao' else ("badge-medium" if m['level'] == 'Trung bình' else "badge-low"))
+            rec_text = "Khuyên dùng" if m['recommended'] else "Tham khảo"
+            methods_tbody += f"""
+            <tr>
+                <td>{idx}</td>
+                <td><strong>{m['method']}</strong></td>
+                <td>{m['score']}%</td>
+                <td><span class="badge {badge_class}">{m['level']}</span></td>
+                <td>{rec_text}</td>
+            </tr>
+            """
+            
+        majors_tbody = ""
+        for idx, r in enumerate(self._overview_major_results, 1):
+            ly_do_list = r.get('ly_do_ho_tro', [])
+            ly_do_str = ", ".join(ly_do_list) if ly_do_list else "Độ phù hợp học tập cao"
+            majors_tbody += f"""
+            <tr>
+                <td>{idx}</td>
+                <td><code>{r.get('ma_nganh')}</code></td>
+                <td><strong>{r.get('ten_nganh')}</strong></td>
+                <td><span class="badge badge-high">{r.get('xac_suat')}%</span></td>
+                <td>{ly_do_str}</td>
+            </tr>
+            """
+            
+        best_method = methods[0]['method'] if methods else 'Học bạ'
+        best_level = methods[0]['level'] if methods else 'Chưa rõ'
+        advice_text = f"Dựa trên phân tích hồ sơ, bạn có độ sẵn sàng đạt <strong>{methods[0]['score']}% ({best_level})</strong> cho phương thức <strong>{best_method}</strong>. Chúng tôi khuyên bạn nên tập trung nộp hồ sơ xét tuyển bằng phương thức này để tối ưu hóa cơ hội trúng tuyển vào HUIT."
+
+        html_content = f"""<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Báo cáo Kết quả Hướng nghiệp HUIT - {student_name}</title>
+    <style>
+        body {{
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: #333333;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }}
+        .container {{
+            max-width: 850px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+            padding: 40px;
+            border-top: 8px solid #9E1B22;
+        }}
+        .header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #eaeaea;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        .header-left h1 {{
+            color: #9E1B22;
+            margin: 0;
+            font-size: 26px;
+            font-weight: 700;
+        }}
+        .header-left p {{
+            color: #666666;
+            margin: 5px 0 0 0;
+            font-size: 14px;
+        }}
+        .btn-print {{
+            background-color: #9E1B22;
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }}
+        .btn-print:hover {{
+            background-color: #82151B;
+        }}
+        .section-title {{
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-left: 4px solid #D4AF37;
+            padding-left: 10px;
+        }}
+        .grid-info {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            background: #fdfdfd;
+            border: 1px solid #eaeaea;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }}
+        .info-item {{
+            font-size: 15px;
+        }}
+        .info-item strong {{
+            color: #555555;
+        }}
+        .scores-list {{
+            margin: 5px 0 0 0;
+            padding-left: 20px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }}
+        th, td {{
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eaeaea;
+        }}
+        th {{
+            background-color: #f8f9fa;
+            color: #333333;
+            font-weight: 600;
+        }}
+        .badge {{
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        .badge-recommended {{
+            background-color: #e3fcf7;
+            color: #0aa883;
+        }}
+        .badge-high {{
+            background-color: #e8f4fd;
+            color: #1a73e8;
+        }}
+        .badge-medium {{
+            background-color: #fff8e1;
+            color: #f57c00;
+        }}
+        .badge-low {{
+            background-color: #fce8e6;
+            color: #d93025;
+        }}
+        .advice-box {{
+            background-color: #fff9f0;
+            border: 1px solid #ffe8cc;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }}
+        .advice-box h4 {{
+            margin: 0 0 10px 0;
+            color: #d97706;
+            font-size: 16px;
+        }}
+        code {{
+            font-family: Consolas, monospace;
+            background-color: #f1f3f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }}
+        .footer {{
+            text-align: center;
+            color: #888888;
+            font-size: 12px;
+            margin-top: 50px;
+            border-top: 1px solid #eaeaea;
+            padding-top: 20px;
+        }}
+        @media print {{
+            body {{
+                background-color: #ffffff;
+                padding: 0;
+            }}
+            .container {{
+                box-shadow: none;
+                padding: 0;
+                border-top: none;
+            }}
+            .btn-print {{
+                display: none;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>HỆ THỐNG GỢI Ý NGÀNH HỌC HUIT</h1>
+                <p>Báo cáo Phân tích Hồ sơ & Đề xuất Hướng nghiệp Cá nhân</p>
+            </div>
+            <div>
+                <button class="btn-print" onclick="window.print()">In báo cáo</button>
+            </div>
+        </div>
+
+        <div class="section-title">Thông tin hồ sơ thí sinh</div>
+        <div class="grid-info">
+            <div class="info-item">
+                <p><strong>Họ và tên:</strong> {student_name}</p>
+                <p><strong>Ngày lập báo cáo:</strong> {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
+                <p><strong>Khu vực tuyển sinh:</strong> {kv}</p>
+                <p><strong>Đối tượng ưu tiên:</strong> {dt}</p>
+            </div>
+            <div class="info-item">
+                <p><strong>Nhóm ngành quan tâm:</strong> {sot_thich}</p>
+                <p><strong>Đặc điểm cá nhân:</strong> {dac_diem}</p>
+                <p><strong>Địa lý / Vùng miền:</strong> {vung_mien}</p>
+                <p><strong>Điểm số ghi nhận:</strong></p>
+                <ul class="scores-list">
+                    {diem_details_html}
+                </ul>
+            </div>
+        </div>
+
+        <div class="section-title">Đánh giá mức độ sẵn sàng theo phương thức xét tuyển</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>STT</th>
+                    <th>Phương thức xét tuyển</th>
+                    <th>Điểm số độ phù hợp</th>
+                    <th>Trạng thái sẵn sàng</th>
+                    <th>Đề xuất</th>
+                </tr>
+            </thead>
+            <tbody>
+                {methods_tbody}
+            </tbody>
+        </table>
+
+        <div class="section-title">Top 12 ngành đào tạo HUIT phù hợp nhất</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>STT</th>
+                    <th>Mã ngành</th>
+                    <th>Tên ngành đào tạo</th>
+                    <th>Độ phù hợp</th>
+                    <th>Lý do & Gợi ý</th>
+                </tr>
+            </thead>
+            <tbody>
+                {majors_tbody}
+            </tbody>
+        </table>
+
+        <div class="advice-box">
+            <h4>💡 Lời khuyên hướng nghiệp tuyển sinh HUIT</h4>
+            <p>{advice_text}</p>
+            <p>Để biết thêm thông tin chi tiết về đề án tuyển sinh, học phí và cách nộp hồ sơ trực tuyến, vui lòng truy cập trang thông tin tuyển sinh chính thức HUIT tại: <a href="https://ts.huit.edu.vn" target="_blank">ts.huit.edu.vn</a>.</p>
+        </div>
+
+        <div class="footer">
+            <p>© {datetime.now().year} Trường Đại học Công thương TP.HCM (HUIT) - Hệ thống Hướng nghiệp & Tuyển sinh thông minh</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        try:
+            desktop_path = Path(os.path.expanduser('~')) / 'Desktop'
+            report_file = desktop_path / 'Bao_cao_Huong_nghiep_HUIT.html'
+            report_file.write_text(html_content, encoding='utf-8')
+            
+            messagebox.showinfo(
+                'Xuất báo cáo thành công',
+                f'Báo cáo hướng nghiệp đã được tạo thành công ngoài Desktop:\n\n{report_file}\n\nĐang tự động mở báo cáo trong trình duyệt của bạn...',
+            )
+            
+            import webbrowser
+            webbrowser.open(report_file.as_uri())
+        except Exception as e:
+            messagebox.showerror(
+                'Lỗi xuất báo cáo',
+                f'Không thể tạo báo cáo hướng nghiệp: {str(e)}',
+            )
 
     def _clear_overview(self):
         self.ov_dgnl.set('')
@@ -3070,13 +3605,22 @@ class App(tk.Tk):
         cb = styled_combo(c_in, self.tt_group, GROUP_OPTIONS, width=56)
         cb.grid(row=0, column=1, columnspan=3, sticky='ew', pady=4)
 
-        section_sep(c_in, 1)
+        label_row(c_in, 'Tổ hợp môn:', 1)
+        tk.Label(
+            c_in,
+            text='Không áp dụng – xét theo ĐTB 3 năm và điều kiện tuyển thẳng',
+            font=F['small'],
+            bg=C['card_bg'],
+            fg=C['text_muted'],
+        ).grid(row=1, column=1, columnspan=3, sticky='w', pady=4)
+
+        section_sep(c_in, 2)
 
         self.tt_l10 = tk.StringVar(); self.tt_l11 = tk.StringVar(); self.tt_l12 = tk.StringVar()
         grade_fields = [
-            ('ĐTB Lớp 10 (0–10):', self.tt_l10, 2, 0),
-            ('ĐTB Lớp 11 (0–10):', self.tt_l11, 2, 2),
-            ('ĐTB Lớp 12 (0–10):', self.tt_l12, 3, 0),
+            ('ĐTB Lớp 10 (0–10):', self.tt_l10, 3, 0),
+            ('ĐTB Lớp 11 (0–10):', self.tt_l11, 3, 2),
+            ('ĐTB Lớp 12 (0–10):', self.tt_l12, 4, 0),
         ]
         for lbl, var, row, col in grade_fields:
             label_row(c_in, lbl, row, col=col)
@@ -3085,18 +3629,18 @@ class App(tk.Tk):
             var.trace_add('write', self._tt_update_sum)
 
         self._ttSumLbl = label_row(
-            c_in, 'Tổng ĐTB 3 năm (thang 30):', 3, col=2)
+            c_in, 'Tổng ĐTB 3 năm (thang 30):', 4, col=2)
         self._ttSumVal = tk.Label(c_in, text='0.0', font=('Segoe UI', 11, 'bold'),
                                   bg=C['card_bg'], fg=C['accent'])
-        self._ttSumVal.grid(row=3, column=3, sticky='w', pady=4)
+        self._ttSumVal.grid(row=4, column=3, sticky='w', pady=4)
 
-        label_row(c_in, 'Điểm Tiếng Anh (0–10, tùy chọn):', 4)
+        label_row(c_in, 'Điểm Tiếng Anh (0–10, tùy chọn):', 5)
         self.tt_anh = tk.StringVar()
         styled_entry(c_in, self.tt_anh, 12).grid(
-            row=4, column=1, sticky='w', pady=4)
+            row=5, column=1, sticky='w', pady=4)
 
         btn_r = tk.Frame(c_in, bg=C['card_bg'])
-        btn_r.grid(row=5, column=0, columnspan=4, sticky='w', pady=(12, 0))
+        btn_r.grid(row=6, column=0, columnspan=4, sticky='w', pady=(12, 0))
         IconButton(btn_r, 'Phân tích hồ sơ', self._run_tuyenthang, width=170).pack(side=tk.LEFT)
         IconButton(btn_r, 'Xóa dữ liệu', self._clear_tuyenthang,
                    bg=C['secondary'], fg=C['text_dark'],
@@ -3387,6 +3931,8 @@ class App(tk.Tk):
         quick_frame = tk.Frame(input_frame, bg=C['surface_alt'])
         quick_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=(12, 0))
 
+
+
         prompts = [
             ("Tư vấn ngành cho tôi", "Tôi muốn tư vấn ngành học phù hợp nhất"),
             ("Học phí HUIT", "Học phí của HUIT là bao nhiêu?"),
@@ -3457,14 +4003,19 @@ class App(tk.Tk):
         self._process_chat_with_loading(text)
 
     def _process_chat_with_loading(self, text):
+        is_free_qa = (hasattr(self, 'chat_state') and self.chat_state == 'state_qa')
         if hasattr(self, 'chat_busy_var'):
-            self.chat_busy_var.set('AI đang phân tích câu trả lời...')
-            self._set_status('Trợ lý AI đang xử lý...')
+            if is_free_qa:
+                self.chat_busy_var.set('AI đang suy nghĩ...')
+                self._set_status('Trợ lý AI đang xử lý...')
+            else:
+                self.chat_busy_var.set('AI đang phân tích câu trả lời...')
+                self._set_status('Trợ lý AI đang xử lý...')
             self.update_idletasks()
         try:
             self._process_message(text)
         finally:
-            if hasattr(self, 'chat_busy_var'):
+            if not is_free_qa and hasattr(self, 'chat_busy_var'):
                 self.chat_busy_var.set('')
                 self._set_status('Trợ lý AI sẵn sàng')
 
@@ -3649,79 +4200,309 @@ class App(tk.Tk):
             f"về các ngành học đề xuất, học phí, chương trình đào tạo hoặc ký túc xá tại HUIT..."
         )
         self._append_to_chat_log("Trợ lý AI", followup, is_ai=True)
-
     def _process_free_qa(self, text):
+        api_key = self.gemini_api_key.get().strip()
+        if not api_key:
+            self._process_fallback_qa(text)
+            if hasattr(self, 'chat_busy_var'):
+                self.chat_busy_var.set('')
+                self._set_status('Trợ lý AI sẵn sàng')
+            return
+
+        if not getattr(self, 'gemini_consent_given', False):
+            agree = messagebox.askyesno(
+                "Đồng ý điều khoản quyền riêng tư",
+                "Để cung cấp câu trả lời cá nhân hóa thông minh, thông tin điểm số, sở thích và nội dung trò chuyện của bạn sẽ được gửi tới dịch vụ trí tuệ nhân tạo Google Gemini.\n\nBạn có đồng ý chia sẻ thông tin này không?",
+                icon='info'
+            )
+            if agree:
+                self.gemini_consent_given = True
+                self._save_setting('gemini_consent_given', True)
+            else:
+                self._process_fallback_qa(text)
+                if hasattr(self, 'chat_busy_var'):
+                    self.chat_busy_var.set('')
+                    self._set_status('Trợ lý AI sẵn sàng')
+                return
+
+        threading.Thread(target=self._query_gemini_api_call, args=(text, api_key), daemon=True).start()
+
+    def _query_gemini_api_call(self, text, api_key):
+        import urllib.request
+        import urllib.error
+        import json
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        headers = {'Content-Type': 'application/json'}
+        
+        system_context = (
+            "Bạn là Trợ lý Hướng nghiệp AI chính thức của Trường Đại học Công thương TP.HCM (HUIT).\n"
+            "Hãy tư vấn một cách thân thiện, chính xác, khách quan, và thuyết phục.\n\n"
+            f"Thông tin học sinh hiện tại:\n"
+            f"- Họ tên: {self.student_name}\n"
+            f"- Phương thức dự kiến xét tuyển: {self.student_scores.get('method', 'Chưa rõ')}\n"
+            f"- Điểm số dự kiến: {self.student_scores.get('score', 'Chưa rõ')}\n"
+            f"- Nhóm ngành quan tâm: {self.student_interest}\n\n"
+            "Thông tin về HUIT cần biết:\n"
+            "- Học phí: Trung bình khoảng 30 - 40 triệu đồng/năm tùy theo ngành và số tín chỉ đăng ký (khoảng 1.2M - 1.5M/tín chỉ).\n"
+            "- Trường có 9 nhóm ngành đào tạo chính: Công nghệ - Chế biến - Thực phẩm, Kỹ thuật - Cơ khí - Tự động hóa, Hóa học - Sinh học - Môi trường - Vật liệu, Công nghệ thông tin - Trí tuệ nhân tạo - Dữ liệu, Kinh doanh - Quản trị - Marketing, Kế toán - Tài chính - Ngân hàng, Logistics - Quản lý chuỗi cung ứng - Kinh doanh chuyên biệt, Luật - Xã hội - Ngôn ngữ, Du lịch - Nhà hàng - Khách sạn - Dịch vụ.\n"
+            "- Ký túc xá khang trang tại TP.HCM, đầy đủ tiện nghi, an ninh tốt.\n"
+            "- Địa chỉ: 140 Lê Trọng Tấn, P. Tây Thạnh, Q. Tân Phú, TP.HCM.\n"
+            "- Website tuyển sinh: https://ts.huit.edu.vn\n\n"
+            "Hãy trả lời câu hỏi sau bằng tiếng Việt, ngắn gọn (khoảng 2-4 câu hoặc liệt kê ngắn gọn), trực tiếp giải đáp thắc mắc của học sinh."
+        )
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": f"{system_context}\n\nHọc sinh hỏi: {text}"}
+                    ]
+                }
+            ],
+            "tools": [
+                {"google_search": {}}
+            ],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 800
+            }
+        }
+
+        try:
+            req = urllib.request.Request(
+                url, 
+                data=json.dumps(payload).encode('utf-8'), 
+                headers=headers, 
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                resp_data = json.loads(response.read().decode('utf-8'))
+                ans = resp_data['candidates'][0]['content']['parts'][0]['text']
+            
+            self.after(0, lambda: self._handle_gemini_success(ans))
+        except urllib.error.HTTPError:
+            self.after(0, lambda: self._handle_gemini_error(text, is_offline=False))
+        except urllib.error.URLError:
+            self.after(0, lambda: self._handle_gemini_error(text, is_offline=True))
+        except Exception:
+            self.after(0, lambda: self._handle_gemini_error(text, is_offline=False))
+
+    def _handle_gemini_success(self, ans):
+        self._offline_warning_shown = False
+        self._append_to_chat_log("Trợ lý AI", ans.strip(), is_ai=True)
+        if hasattr(self, 'chat_busy_var'):
+            self.chat_busy_var.set('')
+            self._set_status('Trợ lý AI sẵn sàng')
+
+    def _handle_gemini_error(self, text, is_offline=False):
+        if is_offline:
+            fallback_msg = "(Thiết bị của bạn hiện không có kết nối Internet. Trợ lý AI HUIT tạm thời chuyển sang chế độ tư vấn ngoại tuyến/offline)"
+            if not getattr(self, '_offline_warning_shown', False):
+                self._offline_warning_shown = True
+                messagebox.showwarning(
+                    "Lỗi kết nối mạng",
+                    "Thiết bị của bạn hiện không có kết nối Internet.\nHệ thống sẽ chuyển sang chế độ tư vấn offline."
+                )
+        else:
+            fallback_msg = "(Không kết nối được Gemini AI. Tôi xin phép trả lời bằng bộ câu hỏi offline của HUIT)"
+            
+        self._append_to_chat_log("Trợ lý AI", fallback_msg, is_ai=True)
+        self._process_fallback_qa(text)
+        if hasattr(self, 'chat_busy_var'):
+            self.chat_busy_var.set('')
+            self._set_status('Trợ lý AI sẵn sàng')
+
+    def _process_fallback_qa(self, text):
         cleaned = text.lower()
         if "học phí" in cleaned or "hoc phi" in cleaned or "tiền học" in cleaned:
-            response = (
-                "Học phí tại Trường Đại học Công Thương TP.HCM (HUIT) được tính theo tín chỉ thực tế:\n"
-                "- Các ngành thuộc khối Kinh tế, Luật, Ngôn ngữ: khoảng 26 - 28 triệu đồng / năm học.\n"
-                "- Các ngành thuộc khối Kỹ thuật, Công nghệ thông tin, Thực phẩm: khoảng 28 - 30 triệu đồng / năm học.\n"
-                "Lộ trình tăng học phí được cam kết không quá 10% mỗi năm theo đúng quy định."
+            ans = (
+                "Học phí tại HUIT dao động khoảng 30 - 40 triệu đồng/năm học, tính theo số tín chỉ đăng ký thực tế "
+                "(trung bình khoảng 1.2M - 1.5M/tín chỉ). Học phí được giữ ổn định và công bố minh bạch đầu khóa học."
             )
-        elif "công nghệ thông tin" in cleaned or "cntt" in cleaned or "an toàn thông tin" in cleaned or "khoa học dữ liệu" in cleaned:
-            response = (
-                "Nhóm ngành Công nghệ thông tin – Trí tuệ nhân tạo – Dữ liệu là ngành thế mạnh của HUIT:\n"
-                "- Bao gồm: Công nghệ thông tin (7480201), An toàn thông tin (7480202) và Khoa học dữ liệu (7460108).\n"
-                "- Điểm chuẩn xét học bạ dao động khoảng 22 - 25 điểm. Điểm thi tốt nghiệp THPT khoảng 20 - 23 điểm.\n"
-                "- Cơ hội việc làm rộng mở nhờ sự liên kết đào tạo chặt chẽ giữa nhà trường với nhiều doanh nghiệp công nghệ lớn."
+        elif "tuyển thẳng" in cleaned or "tuyen thang" in cleaned or "xét tuyển thẳng" in cleaned:
+            ans = (
+                "Điều kiện xét tuyển thẳng HUIT bao gồm: Học sinh giỏi THPT các năm, hoặc đạt giải học sinh giỏi quốc gia, "
+                "khoa học kỹ thuật cấp quốc gia, hoặc sở hữu chứng chỉ quốc tế (IELTS từ 5.5, TOEFL, v.v.) kết hợp học bạ khá trở lên."
             )
-        elif "thực phẩm" in cleaned or "dinh dưỡng" in cleaned or "chế biến" in cleaned:
-            response = (
-                "Trường HUIT (trước đây là trường Thực phẩm) tự hào có truyền thống lâu đời nhất về ngành Thực phẩm:\n"
-                "- Các ngành: Công nghệ Thực phẩm (7540101), Đảm bảo chất lượng & An toàn thực phẩm (7540106), Công nghệ chế biến thủy sản (7540105), Khoa học dinh dưỡng và ẩm thực (7819009).\n"
-                "- Điểm chuẩn học bạ thường ở mức khá cao (24 - 26 điểm). Điểm thi THPT khoảng 21 - 24 điểm.\n"
-                "- Trường trang bị nhiều xưởng thực nghiệm quy mô bán công nghiệp phục vụ việc thực hành trực tiếp."
+        elif "ký túc xá" in cleaned or "ky tuc xa" in cleaned or "chỗ ở" in cleaned or "phòng trọ" in cleaned:
+            ans = (
+                "Trường HUIT có khu Ký túc xá hiện đại nằm gần cơ sở học tập chính, đáp ứng đầy đủ tiện nghi, internet tốc độ cao, "
+                "an ninh 24/7 với chi phí rất ưu đãi dành riêng cho sinh viên của trường."
             )
-        elif "tuyển thẳng" in cleaned or "tuyen thang" in cleaned or "học lực giỏi" in cleaned:
-            response = (
-                "Chính sách xét tuyển thẳng tại HUIT:\n"
-                "1. Học sinh đạt giải các kỳ thi Học sinh giỏi quốc gia, Khoa học kỹ thuật quốc gia.\n"
-                "2. Thí sinh tốt nghiệp THPT đạt học lực Giỏi 3 năm liên tiếp.\n"
-                "3. Thí sinh có chứng chỉ IELTS từ 5.5 trở lên kết hợp với kết quả học bạ đạt loại Khá trở lên ở lớp 12."
+        elif "ngành" in cleaned or "nganh" in cleaned or "học gì" in cleaned:
+            ans = (
+                "HUIT đào tạo 9 nhóm ngành lớn bao gồm: Công nghệ Thực phẩm, Kỹ thuật - Cơ khí - Tự động hóa, CNTT - Trí tuệ nhân tạo, "
+                "Hóa học - Sinh học - Môi trường, Kinh doanh - Marketing, Kế toán - Tài chính, Logistics, Luật - Ngôn ngữ và Du lịch. "
+                "Bạn có thể xem chi tiết ở mục tuyển sinh trên trang chủ HUIT."
             )
-        elif "ký túc xá" in cleaned or "ktx" in cleaned or "chỗ ở" in cleaned:
-            response = (
-                "Ký túc xá của HUIT sạch sẽ, khép kín và an ninh tuyệt đối:\n"
-                "- Vị trí thuận tiện, phòng từ 4 - 8 sinh viên đầy đủ tiện nghi cơ bản.\n"
-                "- Chi phí KTX rất rẻ, khoảng 250.000đ - 450.000đ/tháng/sinh viên.\n"
-                "- Có chính sách ưu tiên xét chỗ ở cho tân sinh viên khó khăn hoặc diện chính sách."
+        elif "địa chỉ" in cleaned or "ở đâu" in cleaned or "dia chi" in cleaned:
+            ans = (
+                "Cơ sở chính của Trường Đại học Công thương TP.HCM nằm tại số 140 Lê Trọng Tấn, Phường Tây Thạnh, Quận Tân Phú, TP.HCM. "
+                "Trường nằm ở khu vực giao thông thuận lợi, sầm uất và nhiều tiện ích."
             )
-        elif "học bạ" in cleaned or "xét học bạ" in cleaned:
-            response = (
-                "Thông tin xét học bạ HUIT:\n"
-                "- Tính tổng điểm trung bình cộng 3 môn theo tổ hợp của 5 học kỳ THPT (cả năm Lớp 10, Lớp 11 và Học kỳ 1 Lớp 12).\n"
-                "- Ngưỡng nhận hồ sơ đăng ký xét tuyển tối thiểu là 18.0 điểm.\n"
-                "- Phương thức này giúp các thí sinh giảm áp lực thi cử và đăng ký xét tuyển trực tuyến tiện lợi."
-            )
-        elif "ngôn ngữ" in cleaned or "tiếng anh" in cleaned or "tiếng trung" in cleaned:
-            response = (
-                "HUIT đào tạo 2 ngành Ngôn ngữ chính quy:\n"
-                "- Ngôn ngữ Anh (7220201) và Ngôn ngữ Trung Quốc (7220204).\n"
-                "- Xét tuyển qua các tổ hợp: D01 (Toán, Văn, Anh), A01 (Toán, Lý, Anh), D09 (Toán, Sử, Anh), D14 (Văn, Sử, Anh).\n"
-                "- Chương trình học hướng tới kỹ năng giao tiếp tự tin, thương mại quốc tế và cơ hội thực tập nước ngoài."
-            )
-        elif "du lịch" in cleaned or "khách sạn" in cleaned or "nhà hàng" in cleaned:
-            response = (
-                "Khối ngành Du lịch - Khách sạn tại HUIT sở hữu mạng lưới đối tác khách sạn 4-5 sao rộng khắp:\n"
-                "- Các ngành: Du lịch (7810101), Quản trị dịch vụ du lịch và lữ hành (7810103), Quản trị khách sạn (7810201), Quản trị nhà hàng và dịch vụ ăn uống (7810202).\n"
-                "- Sinh viên được thực hành tại nhà hàng, quầy bar, buồng phòng đạt tiêu chuẩn khách sạn cao cấp ngay tại khu thực hành của trường."
-            )
-        elif "kinh doanh" in cleaned or "marketing" in cleaned or "quản trị" in cleaned:
-            response = (
-                "Nhóm ngành Kinh doanh của HUIT có chương trình học cập nhật xu hướng thị trường:\n"
-                "- Bao gồm: Quản trị kinh doanh (7340101), Marketing (7340115), Kinh doanh quốc tế (7340120), Thương mại điện tử (7340122).\n"
-                "- Điểm chuẩn học bạ dao động khoảng 23 - 25 điểm.\n"
-                "- Sinh viên được cọ xát qua các cuộc thi khởi nghiệp và thực hành giải bài toán kinh doanh thực tế."
+        elif "website" in cleaned or "trang chủ" in cleaned or "web" in cleaned:
+            ans = (
+                "Bạn có thể truy cập trang chủ của trường tại: https://huit.edu.vn hoặc trang thông tin tuyển sinh chính thức: https://ts.huit.edu.vn"
             )
         else:
-            response = (
-                f"Cảm ơn câu hỏi của {self.student_name}. Để cập nhật các thông tin tuyển sinh mới nhất và chính xác nhất "
-                f"của trường Đại học Công Thương TP.HCM (HUIT), bạn có thể truy cập website: https://tuyensinh.huit.edu.vn "
-                f"hoặc gọi trực tiếp đến tổng đài tư vấn: 028.3816.1673."
+            ans = (
+                f"Cảm ơn {self.student_name} đã đặt câu hỏi. HUIT đào tạo đa ngành với các lĩnh vực nổi bật như Công nghệ thực phẩm, CNTT, Kinh doanh. "
+                "Nếu bạn cần thêm thông tin chi tiết về học phí, ký túc xá hay điểm chuẩn các năm, hãy nhắn cụ thể hơn nhé!"
             )
-        self._append_to_chat_log("Trợ lý AI", response, is_ai=True)
+        self._append_to_chat_log("Trợ lý AI", ans, is_ai=True)
 
+    def _build_page_settings(self):
+        page = tk.Frame(self._content_host, bg=C['content_bg'])
+        self._pages['Cài đặt'] = page
+        page.grid_columnconfigure(0, weight=1)
+        
+        title_frame = tk.Frame(page, bg=C['content_bg'])
+        title_frame.pack(fill=tk.X, pady=(0, 18))
+        tk.Label(
+            title_frame,
+            text='Cài đặt hệ thống',
+            font=F['page_title'],
+            bg=C['content_bg'],
+            fg=C['text_header'],
+        ).pack(anchor=tk.W)
+        tk.Label(
+            title_frame,
+            text='Cấu hình khóa API Key, tùy chỉnh giao diện và quản lý quyền riêng tư dữ liệu cá nhân.',
+            font=F['small'],
+            bg=C['content_bg'],
+            fg=C['text_muted'],
+        ).pack(anchor=tk.W, pady=(4, 0))
+
+        ai_card, ai_content = make_card(page, 'Cấu hình Trợ lý AI (Google Gemini)')
+        ai_card.pack(fill=tk.X, pady=(0, 14))
+        
+        tk.Label(
+            ai_content,
+            text='Nhập Gemini API Key để kích hoạt tính năng chat tự do tư vấn hướng nghiệp:',
+            font=F['label'],
+            bg=C['card_bg'],
+            fg=C['text_dark'],
+        ).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 8))
+        
+        self.settings_api_show = tk.BooleanVar(value=False)
+        self.settings_api_entry = styled_entry(
+            ai_content,
+            self.gemini_api_key,
+            show='*',
+            width=50
+        )
+        self.settings_api_entry.grid(row=1, column=0, sticky='w', pady=(0, 10))
+        
+        def toggle_settings_api_visibility():
+            if self.settings_api_show.get():
+                self.settings_api_entry.configure(show='*')
+                self.settings_api_show.set(False)
+                self.settings_api_btn.configure(text='Hiện khóa')
+            else:
+                self.settings_api_entry.configure(show='')
+                self.settings_api_show.set(True)
+                self.settings_api_btn.configure(text='Ẩn khóa')
+                
+        def delete_api_key():
+            self.gemini_api_key.set('')
+            messagebox.showinfo('Đã xóa', 'Đã xóa API Key khỏi cấu hình.')
+
+        self.settings_api_btn = IconButton(
+            ai_content,
+            'Hiện khóa',
+            toggle_settings_api_visibility,
+            bg=C['secondary'],
+            fg=C['text_dark'],
+            hover=C['secondary_hover'],
+            width=100
+        )
+        self.settings_api_btn.grid(row=1, column=1, sticky='w', padx=(10, 0), pady=(0, 10))
+        
+        IconButton(
+            ai_content,
+            'Xóa khóa API',
+            delete_api_key,
+            bg=C['secondary'],
+            fg=C['text_dark'],
+            hover=C['secondary_hover'],
+            width=120
+        ).grid(row=1, column=2, sticky='w', padx=(10, 0), pady=(0, 10))
+
+        tk.Label(
+            ai_content,
+            text='Quyền riêng tư & Chia sẻ dữ liệu:',
+            font=F['label_b'],
+            bg=C['card_bg'],
+            fg=C['text_dark'],
+        ).grid(row=2, column=0, columnspan=3, sticky='w', pady=(10, 4))
+        
+        self.settings_consent_var = tk.StringVar(
+            value='Đã đồng ý chia sẻ dữ liệu' if getattr(self, 'gemini_consent_given', False) else 'Chưa đồng ý (Sử dụng AI offline)'
+        )
+        
+        self.settings_consent_lbl = tk.Label(
+            ai_content,
+            textvariable=self.settings_consent_var,
+            font=F['label'],
+            bg=C['card_bg'],
+            fg=C['accent'],
+        )
+        self.settings_consent_lbl.grid(row=3, column=0, sticky='w')
+        
+        def reset_consent():
+            self.gemini_consent_given = False
+            self._save_setting('gemini_consent_given', False)
+            self.settings_consent_var.set('Chưa đồng ý (Sử dụng AI offline)')
+            messagebox.showinfo('Quyền riêng tư', 'Đã đặt lại quyền riêng tư. Hộp thoại hỏi ý kiến sẽ hiển thị lại trong lần trò chuyện tiếp theo.')
+
+        IconButton(
+            ai_content,
+            'Đặt lại quyền riêng tư',
+            reset_consent,
+            bg=C['secondary'],
+            fg=C['text_dark'],
+            hover=C['secondary_hover'],
+            width=180
+        ).grid(row=3, column=1, columnspan=2, sticky='w', padx=(10, 0))
+
+        ui_card, ui_content = make_card(page, 'Tùy chỉnh giao diện & Hiển thị')
+        ui_card.pack(fill=tk.X, pady=(0, 14))
+        
+        tk.Label(
+            ui_content,
+            text='Chế độ màu hiển thị (Giao diện):',
+            font=F['label'],
+            bg=C['card_bg'],
+            fg=C['text_dark'],
+        ).grid(row=0, column=0, sticky='w', pady=(0, 10))
+        
+        def toggle_theme_settings():
+            self._toggle_theme()
+            theme_btn.configure(text='Chuyển sang Giao diện Sáng' if self._theme_name == 'dark' else 'Chuyển sang Giao diện Tối')
+
+        theme_btn = IconButton(
+            ui_content,
+            'Chuyển sang Giao diện Tối' if self._theme_name == 'light' else 'Chuyển sang Giao diện Sáng',
+            toggle_theme_settings,
+            bg=C['secondary'],
+            fg=C['text_dark'],
+            hover=C['secondary_hover'],
+            width=240
+        )
+        theme_btn.grid(row=0, column=1, sticky='w', padx=(20, 0), pady=(0, 10))
+
+        info_card, info_content = make_card(page, 'Thông tin sản phẩm')
+        info_card.pack(fill=tk.X)
+        
+        tk.Label(
+            info_content,
+            text='Phiên bản ứng dụng: v2.0-stable\nPhiên bản mô hình: HUIT-ML-2026.06\nBản quyền thuộc về Trường Đại học Công thương TP.HCM (HUIT)',
+            font=F['small'],
+            bg=C['card_bg'],
+            fg=C['text_muted'],
+            justify=tk.LEFT
+        ).pack(anchor=tk.W)
 
 
 if __name__ == '__main__':

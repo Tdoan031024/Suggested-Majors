@@ -100,23 +100,62 @@ def get_theme_colors(theme_name):
     """Return a copy of the requested color palette."""
     return (DARK_COLORS if theme_name == "dark" else LIGHT_COLORS).copy()
 
+# ── Đăng ký Font Roboto (Google Font) trên Windows ───────────────────────
+import sys
+from pathlib import Path
+
+def _register_custom_fonts():
+    if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            base_dir = Path(sys._MEIPASS)
+        else:
+            base_dir = Path(sys.executable).resolve().parent
+        fonts_dir = base_dir / "apps" / "desktop" / "assets" / "fonts"
+    else:
+        fonts_dir = Path(__file__).resolve().parent / "assets" / "fonts"
+
+    loaded = False
+    if sys.platform == 'win32' and fonts_dir.exists():
+        import ctypes
+        try:
+            for font_file in fonts_dir.glob("*.ttf"):
+                path = str(font_file.resolve())
+                res = ctypes.windll.gdi32.AddFontResourceW(path)
+                if res > 0:
+                    loaded = True
+            if loaded:
+                try:
+                    result = ctypes.c_long()
+                    ctypes.windll.user32.SendMessageTimeoutW(0xffff, 0x001d, 0, 0, 2, 100, ctypes.byref(result))
+                except Exception:
+                    try:
+                        ctypes.windll.user32.PostMessageW(0xffff, 0x001d, 0, 0)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Error loading custom fonts: {e}")
+    return loaded
+
+HAS_ROBOTO = _register_custom_fonts()
+FONT_FAMILY = "Roboto" if HAS_ROBOTO else "Segoe UI"
+
 FONTS = {
-    "app_title": ("Segoe UI", 18, "bold"),
-    "app_sub": ("Segoe UI", 10),
-    "nav": ("Segoe UI", 10, "bold"),
-    "section": ("Segoe UI", 13, "bold"),
-    "label": ("Segoe UI", 10),
-    "label_b": ("Segoe UI", 10, "bold"),
-    "entry": ("Segoe UI", 10),
-    "button": ("Segoe UI", 10, "bold"),
-    "result_h": ("Segoe UI", 10, "bold"),
-    "result": ("Segoe UI", 10),
-    "status": ("Segoe UI", 9),
-    "small": ("Segoe UI", 9),
-    "small_medium": ("Segoe UI", 9, "bold"),
-    "page_title": ("Segoe UI", 28, "bold"),
-    "hero_title": ("Segoe UI", 18, "bold"),
-    "metric": ("Segoe UI", 22, "bold"),
+    "app_title": (FONT_FAMILY, 18, "bold"),
+    "app_sub": (FONT_FAMILY, 10),
+    "nav": (FONT_FAMILY, 10, "bold"),
+    "section": (FONT_FAMILY, 13, "bold"),
+    "label": (FONT_FAMILY, 10),
+    "label_b": (FONT_FAMILY, 10, "bold"),
+    "entry": (FONT_FAMILY, 10),
+    "button": (FONT_FAMILY, 10, "bold"),
+    "result_h": (FONT_FAMILY, 10, "bold"),
+    "result": (FONT_FAMILY, 10),
+    "status": (FONT_FAMILY, 9),
+    "small": (FONT_FAMILY, 9),
+    "small_medium": (FONT_FAMILY, 9, "bold"),
+    "page_title": (FONT_FAMILY, 28, "bold"),
+    "hero_title": (FONT_FAMILY, 18, "bold"),
+    "metric": (FONT_FAMILY, 22, "bold"),
 }
 
 RADIUS = {
@@ -135,15 +174,15 @@ SPACING = {
 }
 
 GROUP_OPTIONS = [
-    "Công nghệ - Chế biến - Thực phẩm",
-    "Kỹ thuật - Cơ khí - Tự động hóa",
-    "Hóa học - Sinh học - Môi trường - Vật liệu",
-    "Công nghệ thông tin - Trí tuệ nhân tạo - Dữ liệu",
-    "Kinh doanh - Quản trị - Marketing",
-    "Kế toán - Tài chính - Ngân hàng",
-    "Logistics - Quản lý chuỗi cung ứng - Kinh doanh chuyên biệt",
-    "Luật - Xã hội - Ngôn ngữ",
-    "Du lịch - Nhà hàng - Khách sạn - Dịch vụ",
+    "Công nghệ – Chế biến – Thực phẩm",
+    "Kỹ thuật – Cơ khí – Tự động hóa",
+    "Hóa học – Sinh học – Môi trường – Vật liệu",
+    "Công nghệ thông tin – Trí tuệ nhân tạo – Dữ liệu",
+    "Kinh doanh – Quản trị – Marketing",
+    "Kế toán – Tài chính – Ngân hàng",
+    "Logistics – Quản lý chuỗi cung ứng – Kinh doanh chuyên biệt",
+    "Luật – Xã hội – Ngôn ngữ",
+    "Du lịch – Nhà hàng – Khách sạn – Dịch vụ",
 ]
 
 NAV_ITEMS = [
@@ -153,4 +192,5 @@ NAV_ITEMS = [
     ("🎯", "Tuyển thẳng", "Xét tuyển thẳng"),
     ("📝", "THPT QG", "Điểm thi THPT"),
     ("🤖", "Trợ lý AI", "Tư vấn hướng nghiệp"),
+    ("⚙️", "Cài đặt", "Cấu hình hệ thống"),
 ]

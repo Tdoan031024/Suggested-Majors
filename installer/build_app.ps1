@@ -78,7 +78,11 @@ Write-Host "  dist\HUIT_GoiYNganh thành file .zip"
 Write-Host "=====================================================" -ForegroundColor Cyan
 
 Write-Host ""
-$choice = Read-Host "Bạn có muốn mở thư mục kết quả không? (y/n)"
-if ($choice -eq 'y') {
-    Start-Process explorer.exe $DIST_APP
+if ($env:NONINTERACTIVE -ne "true") {
+    $choice = Read-Host "Bạn có muốn mở thư mục kết quả không? (y/n)"
+    if ($choice -eq 'y') {
+        Start-Process explorer.exe $DIST_APP
+    }
+} else {
+    Write-Host "Chạy ở chế độ tự động, tự động bỏ qua mở thư mục kết quả."
 }

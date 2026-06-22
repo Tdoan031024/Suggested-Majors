@@ -42,7 +42,11 @@ except Exception as exc:
     check("ML-01", "DGNL module loads", False, str(exc))
 
 try:
-    from huit_career_advisor.inference.thpt import calculate_priority_pt1, goi_y_nganh_thpt
+    from huit_career_advisor.inference.thpt import (
+        allowed_tohops_for_group,
+        calculate_priority_pt1,
+        goi_y_nganh_thpt,
+    )
 
     check("ML-03", "THPT module loads", True)
 except Exception as exc:
@@ -94,6 +98,22 @@ check("PT-03", "Priority formula above 22.5 uses divisor 7.5", calculate_priorit
 check("PT-04", "Priority at max score is zero", calculate_priority_pt1(30, "KV1", NHOM_1) == 0.0)
 check("PT-05", "Priority negative score is guarded", calculate_priority_pt1(-5, "KV1", NHOM_1) == 0.0)
 check("PT-06", "Priority over max score is guarded", calculate_priority_pt1(31, "KV1", NHOM_1) == 0.0)
+ui_groups = [
+    "Công nghệ - Chế biến - Thực phẩm",
+    "Kỹ thuật - Cơ khí - Tự động hóa",
+    "Hóa học - Sinh học - Môi trường - Vật liệu",
+    "Công nghệ thông tin - Trí tuệ nhân tạo - Dữ liệu",
+    "Kinh doanh - Quản trị - Marketing",
+    "Kế toán - Tài chính - Ngân hàng",
+    "Logistics - Quản lý chuỗi cung ứng - Kinh doanh chuyên biệt",
+    "Luật - Xã hội - Ngôn ngữ",
+    "Du lịch - Nhà hàng - Khách sạn - Dịch vụ",
+]
+check(
+    "PT-07",
+    "Every UI major group resolves to admission combinations",
+    all(allowed_tohops_for_group(group) for group in ui_groups),
+)
 
 check("TH-01", "THPT valid input returns recommendations", len(goi_y_nganh_thpt(8, 8, 8, tohop="A00")) > 0)
 check("TH-02", "THPT subject >10 is rejected", is_invalid_result(goi_y_nganh_thpt(11, 8, 8, tohop="A00")))
@@ -103,6 +123,17 @@ check("TT-01", "TuyenThang valid score returns recommendations", len(goi_y_nganh
 check("TT-02", "TuyenThang zero score is rejected", is_invalid_result(goi_y_nganh_tuyen_thang_simple(0)))
 check("TT-03", "TuyenThang negative score is rejected", is_invalid_result(goi_y_nganh_tuyen_thang_simple(-5)))
 check("TT-04", "TuyenThang English >10 is rejected", is_invalid_result(goi_y_nganh_tuyen_thang_simple(27, 11)))
+tt_food = goi_y_nganh_tuyen_thang_simple(
+    27,
+    8.5,
+    "Công nghệ - Chế biến - Thực phẩm",
+    top_n=5,
+)
+check(
+    "TT-05",
+    "TuyenThang accepts UI dash variants for preferred group",
+    bool(tt_food) and all(item.get("thuoc_nhom_mong_muon") for item in tt_food),
+)
 
 if hb:
     valid_hb = {

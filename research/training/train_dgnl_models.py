@@ -207,10 +207,6 @@ def train_and_save(excel_path: str, out_path: str):
 
     print(f"Features: {X.shape}, Classes: {len(le_nganh.classes_)}")
 
-    X = X.copy()
-    X['Ma_Nganh_Encoded'] = y
-    feature_cols.append('Ma_Nganh_Encoded')
-
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     print("Training Random Forest...")

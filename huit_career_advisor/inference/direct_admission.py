@@ -9,7 +9,10 @@ import joblib
 import pandas as pd
 
 from huit_career_advisor.paths import model_path
-from huit_career_advisor.domain.catalog import DIRECT_ADMISSION_GROUP_MAPPING
+from huit_career_advisor.domain.catalog import (
+    DIRECT_ADMISSION_GROUP_MAPPING,
+    resolve_group_key,
+)
 
 _TT_MODEL = None  # payload loaded from models/tt_models.pkl
 
@@ -37,18 +40,8 @@ def _group_mapping_codes():
 
 
 def _is_preferred(ma_str: str, group_input: str, mapping: dict) -> bool:
-    if not group_input:
-        return False
-    # Exact key
-    if group_input in mapping:
-        return ma_str in mapping[group_input]
-    # Substring match
-    group_input_low = group_input.lower()
-    for key, codes in mapping.items():
-        if group_input_low in key.lower() or key.lower() in group_input_low:
-            if ma_str in codes:
-                return True
-    return False
+    key = resolve_group_key(group_input, mapping)
+    return bool(key and ma_str in mapping[key])
 
 
 def goi_y_nganh_tuyen_thang_simple(tb_tong: float, diem_anh: float = 0.0, nguyen_vong: str = None, top_n: int = 10):
